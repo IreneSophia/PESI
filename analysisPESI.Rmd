@@ -1,0 +1,38 @@
+---
+title: "Pilot analysis PESI"
+author: "Irene Sophia Plank"
+date: "2023-04-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)           # kable
+library(tidyverse)       # tibble stuff
+library(ggplot2)         # plots
+library(ggstatsplot)     # ggplot with stats
+library(ggrain)
+
+fl.path = '/home/iplank/Documents/PESI'
+dt.path = paste(fl.path, 'dataPilot', sep = "/")
+knitr::opts_knit$set(root.dir = fl.path)
+
+```
+
+## R Markdown
+
+<style type="text/css">
+.main-container {
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+# Behavioural data
+
+```{r load_data, warning=F, message=F}
+# load the relevant data in long format
+
+
+```
