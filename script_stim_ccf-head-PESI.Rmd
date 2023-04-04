@@ -1,0 +1,172 @@
+---
+title: "PESI stimulus selection"
+author: "Irene S. Plank"
+date: "15/02/2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rMEA)
+library(devtools)
+library(stringr)
+library(BayesFactor)
+source("createDFsync.R")
+
+knitr::opts_knit$set(root.dir = "/home/iplank/Insync/10planki@gmail.com/Google Drive/NEVIA/study_IMPAS/MEA_sync")
+
+```
+
+<style type="text/css">
+.main-container {
+  max-width: 1100px;
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>
+
+# Introduction
+
+Script to read in MEA data, preprocess it and compute CCF based synchrony for each dyad. The script needs the MEA files separated by location (Munich or Cologne), group (ASD or TD) and fps in separate folders. The folder names are:
+
+* "./MEA txt files_5min_t15_Cologne/TD-ASD/24fps"
+* "./MEA txt files_5min_t15_Cologne/TD-ASD/24fps"
+* "./MEA txt files_5min_t15_Cologne/TD-ASD/25fps"
+* "./MEA txt files_5min_t15_Cologne/TD-ASD/25fps"
+
+The script produces a csv file with the selected videos.
+
+# Motion Energy Analysis
+
+```{r mea}
+# initialisation of all settings
+st  = 1          # start times (seconds)
+sz  = 10         # window size for ccf (seconds)
+inc = sz
+lg  = 3          # lag for ccf (seconds)
+
+# 25fps -------------------------------------------------------------------
+
+fps = 25
+
+## COLOGNE SAMPLE
+
+# read in total ROI data of ASD dyads
+mea_ASD_head_C = readMEA("./MEA txt files_5min_t15_Cologne/TD-ASD/25fps",
+                           sampRate=fps, 
+                           skip=st*fps,
+                           s1Col = c(1), s2Col = c(3), 
+                           s1Name = "L_head", s2Name = "R_head", 
+                           header = F,
+                           idOrder = c("id","group"),
+                           idSep = "_",
+                           sep = "")
+
+mea_ASD_head_C = setGroup(mea_ASD_head_C, "ASD")
+
+## read in total ROI data of TD dyads
+mea_TD_head_C = readMEA("./MEA txt files_5min_t15_Cologne/TD-TD/25fps",
+                          sampRate=fps, 
+                          skip=st*fps,
+                          s1Col = c(1), s2Col = c(3), 
+                          s1Name = "L_head", s2Name = "R_head", 
+                          header = F,
+                          idOrder = c("id","group"),
+                          idSep = "_",
+                          sep = "")
+
+mea_TD_head_C = setGroup(mea_TD_head_C, "TD")
+
+## Combine into a single object
+mea_all_head = c(mea_ASD_head_C, mea_TD_head_C)
+
+## Preprocessing and calculations
+mea_all_head = MEAscale(mea_all_head)
+
+## Run CCF analysis 
+mea_all_head = MEAccf(mea_all_head, lagSec=lg, winSec=sz, incSec=inc, r2Z=T, ABS=T)
+
+## put information into the dataframe 
+df.head = createDFsync(mea_all_head, sep = "_", desc = c("group", "dyad", "session"), fps)
+
+df.head = df.head %>%
+  rename("context" = "group") %>%
+  mutate(
+    context = as.factor(context), 
+    context = recode_factor(context, 
+      'ASD' = "heterogeneous",
+      'TD'  = "homogeneous"
+    )
+  ) %>% select(-session)
+
+# create total motion variables for each dyad
+df.head$mot = rowMeans(df.head[,c("s1mot","s2mot")])
+df = df.head
+
+# filter out windows with extreme motion 
+df.head = df %>% ungroup() %>%
+  mutate(
+    upper = quantile(mot, probs=c(0.75), na.rm = T), 
+    lower = quantile(mot, probs=c(0.25), na.rm = T)
+  ) %>%
+  filter(lower <= mot & mot <= upper) %>%
+  drop_na() %>% filter(
+    dyad != "D28g"
+  )
+```
+
+# Choose videos
+
+```{r vid_sel}
+df.head_agg = df.head %>% group_by(context, dyad) %>%
+  summarise(
+    n_win = n()
+  )
+
+# select the n videos of each dyad with the highest and the n with the lowest synchrony values (peak)
+n = 4 # number of windows per condition per video
+vid_sel_high = df.head %>%
+  arrange(desc(peak)) %>% 
+  group_by(dyad) %>%
+  slice(1:n)
+
+vid_sel_low = df.head %>%
+  arrange(peak) %>% 
+  group_by(dyad) %>%
+  slice(1:n)
+
+vid_sel = rbind(vid_sel_low, vid_sel_high) %>%
+  mutate(
+    frame_sta = as.numeric(substr(winst,5,5))*60*fps + as.numeric(substr(winst,7,8))*fps,
+    frame_end = as.numeric(substr(winen,5,5))*60*fps + as.numeric(substr(winen,7,8))*fps
+  )
+
+# add frame for start and end
+
+
+```
+
+# Check peaks and motion
+
+```{r peaks}
+
+# are there context specific differences in synchrony and motion - which we want to avoid!
+boxplot(vid_sel_high[vid_sel_high$context == "heterogeneous",]$peak, vid_sel_high[vid_sel_high$context == "homogeneous",]$peak)
+boxplot(vid_sel_low[vid_sel_low$context == "heterogeneous",]$peak, vid_sel_low[vid_sel_low$context == "homogeneous",]$peak)
+
+shapiro.test(vid_sel_high[(vid_sel_high$context == "homogeneous"),]$peak)
+shapiro.test(vid_sel_high[vid_sel_high$context == "heterogeneous",]$peak)
+shapiro.test(vid_sel_low[(vid_sel_low$context == "homogeneous"),]$peak)
+shapiro.test(vid_sel_low[vid_sel_low$context == "heterogeneous",]$peak)
+
+ttestBF(vid_sel_high[vid_sel_high$context == "heterogeneous",]$peak, vid_sel_high[vid_sel_high$context == "homogeneous",]$peak, paired = F)
+ttestBF(vid_sel_low[vid_sel_low$context == "heterogeneous",]$peak, vid_sel_low[vid_sel_low$context == "homogeneous",]$peak, paired = F)
+
+# Check motion ------------------------------------------------------------
+boxplot(vid_sel_high[vid_sel_high$context == "heterogeneous",]$mot, vid_sel_high[vid_sel_high$context == "homogeneous",]$mot)
+ttestBF(vid_sel_high[vid_sel_high$context == "heterogeneous",]$mot, vid_sel_high[vid_sel_high$context == "homogeneous",]$mot, paired = F)
+
+write_csv(vid_sel %>% select(context, dyad, winst, winen, frame_sta, frame_end), file="PESI_videosel_230222.csv")
+write_csv(vid_sel, file="PESI_videosel-full_230222.csv")
+
+```
