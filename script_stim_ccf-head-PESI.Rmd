@@ -128,12 +128,20 @@ n = 4 # number of windows per condition per video
 vid_sel_high = df.head %>%
   arrange(desc(peak)) %>% 
   group_by(dyad) %>%
-  slice(1:n)
+  slice(1:n) %>%
+  mutate(
+    sync = "high"
+  )
 
 vid_sel_low = df.head %>%
   arrange(peak) %>% 
   group_by(dyad) %>%
-  slice(1:n)
+  slice(1:n) %>%
+  mutate(
+    sync = "low"
+  )
+
+# add frame for start and end
 
 vid_sel = rbind(vid_sel_low, vid_sel_high) %>%
   mutate(
@@ -141,14 +149,14 @@ vid_sel = rbind(vid_sel_low, vid_sel_high) %>%
     frame_end = as.numeric(substr(winen,5,5))*60*fps + as.numeric(substr(winen,7,8))*fps
   )
 
-# add frame for start and end
-
-
 ```
 
 # Check peaks and motion
 
 ```{r peaks}
+
+# are the high sync videos higher in synchrony than the low sync?
+boxplot(vid_sel[vid_sel$sync == "high",]$peak, vid_sel[vid_sel$sync == "low",]$peak)
 
 # are there context specific differences in synchrony and motion - which we want to avoid!
 boxplot(vid_sel_high[vid_sel_high$context == "heterogeneous",]$peak, vid_sel_high[vid_sel_high$context == "homogeneous",]$peak)
@@ -166,7 +174,6 @@ ttestBF(vid_sel_low[vid_sel_low$context == "heterogeneous",]$peak, vid_sel_low[v
 boxplot(vid_sel_high[vid_sel_high$context == "heterogeneous",]$mot, vid_sel_high[vid_sel_high$context == "homogeneous",]$mot)
 ttestBF(vid_sel_high[vid_sel_high$context == "heterogeneous",]$mot, vid_sel_high[vid_sel_high$context == "homogeneous",]$mot, paired = F)
 
-write_csv(vid_sel %>% select(context, dyad, winst, winen, frame_sta, frame_end), file="PESI_videosel_230222.csv")
-write_csv(vid_sel, file="PESI_videosel-full_230222.csv")
+write_csv(vid_sel, file="PESI_videosel-full_230404.csv")
 
 ```
