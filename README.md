@@ -1,1 +1,3 @@
-# PESI
+# PESI: Perception of nonverbal social interaction in autistic and non-autistic people
+
+Autistic and non-autistic people differ in their perception and processing of social situations. However, it is still unclear on which differences these mechanisms are based. In this project, we will fill this gap by recording eye movements of autistic and non-autistic participants when observing non-verbal social interactions. Observing social interactions is an important source of information for social learning, and differences in the underlying mechanisms could therefore be an important cause of differences in social learning. This research project aims directly at understanding the mechanisms of one of the core symptoms of autism spectrum disorder (ASD).
