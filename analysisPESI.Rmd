@@ -33,6 +33,30 @@ knitr::opts_knit$set(root.dir = fl.path)
 
 ```{r load_data, warning=F, message=F}
 # load the relevant data in long format
+df.beh = list.files(path = dt.path, pattern = "*csv$", full.names = T) %>%
+  map_df(~read_delim(., show_col_types = F, delim = ",")) 
+
+# load the stimulus description file
+df.stm = read_csv(paste(fl.path, "PESI_videosel-full_230404.csv", sep = "/"), show_col_types = F) %>%
+  mutate(
+    stm = sprintf("PESI_%s_%08d.mpg", substr(dyad,1,3), frame_sta)
+  ) %>%
+  select(stm, dyad, context, mot, sync, peak)
+
+# merge together
+df = merge(df.beh, df.stm, all.x = T) %>%
+  relocate(subID, dyad, context, sync, peak, mot, trl, stm) %>%
+  mutate(across(where(is.character),as_factor),
+         prc = case_when(
+           confirmed == 1 ~ val/10)  # convert to percentages if rating was confirmed
+         ) %>%
+  arrange(subID, trl)
+
+```
+
+```{r plot_data, warning=F, message=F}
+# load the relevant data in long format
+ggplot(df, aes(y = prc, x = context, fill = sync)) + geom_boxplot() + theme_minimal() + theme(legend.position = "right") 
 
 
 ```
