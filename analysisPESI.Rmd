@@ -12,6 +12,8 @@ library(tidyverse)       # tibble stuff
 library(ggplot2)         # plots
 library(ggstatsplot)     # ggplot with stats
 library(ggrain)
+library(ggpubr)          # background image
+library(png)             # readPNG
 
 fl.path = '/home/iplank/Documents/PESI'
 dt.path = paste(fl.path, 'dataPilot', sep = "/")
@@ -31,9 +33,9 @@ knitr::opts_knit$set(root.dir = fl.path)
 
 # Behavioural data
 
-```{r load_data, warning=F, message=F}
+```{r load_bv, warning=F, message=F}
 # load the relevant data in long format
-df.beh = list.files(path = dt.path, pattern = "*csv$", full.names = T) %>%
+df.beh = list.files(path = dt.path, pattern = "PESI_BV", full.names = T) %>%
   map_df(~read_delim(., show_col_types = F, delim = ",")) 
 
 # load the stimulus description file
@@ -54,9 +56,42 @@ df = merge(df.beh, df.stm, all.x = T) %>%
 
 ```
 
-```{r plot_data, warning=F, message=F}
+```{r plot_bv, warning=F, message=F}
 # load the relevant data in long format
 ggplot(df, aes(y = prc, x = context, fill = sync)) + geom_boxplot() + theme_minimal() + theme(legend.position = "right") 
 
+
+```
+
+```{r load_et, warning=F, message=F}
+# load the relevant data in long format
+df.et = list.files(path = dt.path, pattern = "PESI_ET", full.names = T) %>%
+  setNames(nm = .) %>%
+  map_df(~read_delim(., show_col_types = F, delim = ","), .id = "Filename")  %>%
+  mutate(Comment = na_if(` Comment`, " ")) %>%
+  fill(Comment) %>% 
+  filter(nchar(Comment) == 24) %>%
+  mutate(
+    subID   = regmatches(Filename, regexec("PESI_ET_\\s*(.*?)\\s*_2023", Filename))[[1]][2],
+    trial   = as.factor(substr(Comment,9,(nchar(Comment)-4))),
+    ScreenY = (as.numeric(` LeftScreenY`) + as.numeric(` RightScreenY`))/2,
+    ScreenX = (as.numeric(` LeftScreenX`) + as.numeric(` RightScreenX`))/2,
+  ) %>%
+  select(subID, trial, ScreenX, ScreenY)
+
+```
+
+``` {r heat_subject, echo = T, message = F, fig.width = 8, fig.height = 16, fig.align = "center", warning = F, eval = F}
+
+# load the background image
+bgimg = readPNG(paste(dt.path, "vlcsnap-2023-04-13-15h46m12s405.png", sep = "/"))
+# create heatmaps for participants
+ggplot(df.et, aes(x = ScreenX, y = ScreenY)) +
+  background_image(bgimg) +
+  stat_density2d(geom='raster', aes(fill=..count.., alpha=..count..), contour=F) +
+  scale_fill_gradient(low = "green", high = "red") +
+  scale_alpha_continuous(range = c(0,10), guide = "none") +
+  theme_void() + 
+  facet_wrap(. ~ trial, nrow = 4, ncol = 2)
 
 ```
