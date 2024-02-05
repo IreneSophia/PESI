@@ -1,27 +1,46 @@
 ---
-title: "Pilot analysis PESI"
-author: "Irene Sophia Plank"
-date: "2023-04-04"
+title: "PESI analysis with brms"
+author: "I. S. Plank"
+date: "`r Sys.Date()`"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-library(knitr)           # kable
-library(tidyverse)       # tibble stuff
-library(ggplot2)         # plots
-library(ggstatsplot)     # ggplot with stats
-library(ggrain)
-library(ggpubr)          # background image
-library(png)             # readPNG
+```{r settings, include=FALSE}
 
-fl.path = '/home/iplank/Documents/PESI'
-dt.path = paste(fl.path, 'dataPilot', sep = "/")
-knitr::opts_knit$set(root.dir = fl.path)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+ls.packages = c("knitr",            # kable
+                "ggplot2",          # plots
+                "brms",             # Bayesian lmms
+                "designr",          # simLMM
+                "bridgesampling",   # bridge_sampler
+                "tidyverse",        # tibble stuff
+                "ggpubr",           # ggarrange
+                "ggrain",           # geom_rain
+                "bayesplot",        # plots for posterior predictive checks
+                "SBC",              # plots for checking computational faithfulness
+                "rstatix",          # anova
+                "BayesFactor"
+                )
+
+lapply(ls.packages, library, character.only=TRUE)
+
+# set cores
+options(mc.cores = parallel::detectCores())
+
+# set file paths
+fl.path = '/home/emba/Documents/PESI'
+dt.path = paste(fl.path, 'BVET', sep = "/")
+
+knitr::opts_knit$set(root.dir = '/home/emba/Documents/PESI/PESI_scripts')
+
+# graph settings 
+c_light = "#a9afb2"; c_light_highlight = "#8ea5b2"; c_mid = "#6b98b2" 
+c_mid_highlight = "#3585b2"; c_dark = "#0072b2"; c_dark_highlight = "#0058b2" 
+c_green = "#009E73"
+c_dark_green = "#006f50"
+sz = 1
 
 ```
-
-## R Markdown
 
 <style type="text/css">
 .main-container {
@@ -31,67 +50,66 @@ knitr::opts_knit$set(root.dir = fl.path)
 }
 </style>
 
+## Package versions
+
+```{r lib_versions, echo=F}
+
+print(R.Version()$version.string)
+
+for (package in ls.packages) {
+  print(sprintf("%s version %s", package, packageVersion(package)))
+}
+
+```
+
+## Introduction and preparation
+
+# Demographic information
+
+```{r demo, warning=F, message=F}
+
+
+
+```
+
 # Behavioural data
 
 ```{r load_bv, warning=F, message=F}
+
 # load the relevant data in long format
-df.beh = list.files(path = dt.path, pattern = "PESI_BV", full.names = T) %>%
-  map_df(~read_delim(., show_col_types = F, delim = ",")) 
+df.beh = list.files(path = dt.path, pattern = "PESI-BV", full.names = T) %>%
+  map_df(~read_delim(., show_col_types = F, delim = ",",
+                     col_types = "cddcccddddd")) %>%
+  select(-dyad)
 
 # load the stimulus description file
 df.stm = read_csv(paste(fl.path, "PESI_videosel-full_230404.csv", sep = "/"), show_col_types = F) %>%
   mutate(
-    stm = sprintf("PESI_%s_%08d.mpg", substr(dyad,1,3), frame_sta)
+    video = sprintf("PESI_%s_%08d", substr(dyad,1,3), frame_sta)
   ) %>%
-  select(stm, dyad, context, mot, sync, peak)
+  select(video, dyad, context, mot, peak)
 
 # merge together
-df = merge(df.beh, df.stm, all.x = T) %>%
-  relocate(subID, dyad, context, sync, peak, mot, trl, stm) %>%
-  mutate(across(where(is.character),as_factor),
-         prc = case_when(
-           confirmed == 1 ~ val/10)  # convert to percentages if rating was confirmed
-         ) %>%
-  arrange(subID, trl)
-
-```
-
-```{r plot_bv, warning=F, message=F}
-# load the relevant data in long format
-ggplot(df, aes(y = prc, x = context, fill = sync)) + geom_boxplot() + theme_minimal() + theme(legend.position = "right") 
-
-
-```
-
-```{r load_et, warning=F, message=F}
-# load the relevant data in long format
-df.et = list.files(path = dt.path, pattern = "PESI_ET", full.names = T) %>%
-  setNames(nm = .) %>%
-  map_df(~read_delim(., show_col_types = F, delim = ","), .id = "Filename")  %>%
-  mutate(Comment = na_if(` Comment`, " ")) %>%
-  fill(Comment) %>% 
-  filter(nchar(Comment) == 24) %>%
+df = merge(df.beh, df.stm, all.x = T, by = "video") %>%
   mutate(
-    subID   = regmatches(Filename, regexec("PESI_ET_\\s*(.*?)\\s*_2023", Filename))[[1]][2],
-    trial   = as.factor(substr(Comment,9,(nchar(Comment)-4))),
-    ScreenY = (as.numeric(` LeftScreenY`) + as.numeric(` RightScreenY`))/2,
-    ScreenX = (as.numeric(` LeftScreenX`) + as.numeric(` RightScreenX`))/2,
+         rating.confirmed = case_when(
+           confirmed == 1 ~ rating)  # convert to percentages if rating was confirmed
+         ) %>%
+  arrange(subID, trl) %>%
+  mutate_if(is.character, as.factor)
+
+# how many participants? 
+nrow(df %>% select(subID) %>% distinct())
+
+# exclude participants with more than 33% of trials missing
+df = df %>%
+  group_by(subID) %>%
+  mutate(
+    total = sum(confirmed)/64
   ) %>%
-  select(subID, trial, ScreenX, ScreenY)
-
-```
-
-``` {r heat_subject, echo = T, message = F, fig.width = 8, fig.height = 16, fig.align = "center", warning = F, eval = F}
-
-# load the background image
-bgimg = readPNG(paste(dt.path, "vlcsnap-2023-04-13-15h46m12s405.png", sep = "/"))
-# create heatmaps for participants
-ggplot(df.et, aes(x = ScreenX, y = ScreenY)) +
-  background_image(bgimg) +
-  stat_density2d(geom='raster', aes(fill=..count.., alpha=..count..), contour=F) +
-  scale_fill_gradient(low = "green", high = "red") +
-  scale_alpha_continuous(range = c(0,10), guide = "none") +
-  theme_void() + 
-  facet_wrap(. ~ trial, nrow = 4, ncol = 2)
+  filter(total > 2/3)
+  
+# how many participants left? 
+nrow(df %>% select(subID) %>% distinct())
 
 ```
