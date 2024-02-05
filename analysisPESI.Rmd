@@ -68,7 +68,7 @@ for (package in ls.packages) {
 
 ```{r demo, warning=F, message=F}
 
-
+df.sub = read_csv(file.path(dt.path, "PESI_centraXX.csv"), show_col_types = F)
 
 ```
 
@@ -98,8 +98,11 @@ df = merge(df.beh, df.stm, all.x = T, by = "video") %>%
   arrange(subID, trl) %>%
   mutate_if(is.character, as.factor)
 
-# how many participants? 
-nrow(df %>% select(subID) %>% distinct())
+# merge with group information
+df = merge(df.sub %>% select(subID, diagnosis), df, all.y = T)
+
+# how many participants per group? 
+df %>% select(subID, diagnosis) %>% distinct() %>% group_by(diagnosis) %>% count()
 
 # exclude participants with more than 33% of trials missing
 df = df %>%
@@ -110,6 +113,10 @@ df = df %>%
   filter(total > 2/3)
   
 # how many participants left? 
-nrow(df %>% select(subID) %>% distinct())
+df %>% select(subID, diagnosis) %>% distinct() %>% group_by(diagnosis) %>% count()
+
+# save subIDs of participants that can be used
+write_csv(df %>% select(subID, diagnosis) %>% distinct(), 
+          file = file.path(dt.path, "PESI_inc.csv"))
 
 ```
