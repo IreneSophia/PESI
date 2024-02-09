@@ -127,8 +127,8 @@ df.raads = df %>% filter(questionnaire == "PSY_NEVIA_RAADS-14") %>%
   ) %>% group_by(subID) %>% 
   select(subID, item, section, numericValue)
 
-# some need to be turned around: [!ADD]
-idx = c(1, 6, 11, 23, 26, 33, 37, 43, 47, 48, 53, 58, 62, 68, 72, 77)
+# some need to be turned around:
+idx = c(6)
 df.raads[df.raads$item %in% idx,]$numericValue = abs(df.raads[df.raads$item %in% idx,]$numericValue - max(df.raads$numericValue, na.rm = T) + min(df.raads$numericValue, na.rm = T))
 
 df.raads = df.raads %>% group_by(subID) %>%
@@ -141,7 +141,7 @@ df.stait = df %>% filter(questionnaire == "PSY_NEVIA_STAI_trait") %>%
   mutate(item = as.numeric(gsub("\\D", "", item)),
          value = as.numeric(value))
 
-# some need to be turned around [!ADD: recode some of the questions?]
+# some need to be turned around: 
 idx = c(3, 4, 7)
 df.stait[df.stait$item %in% idx,]$value = abs(df.stait[df.stait$item %in% idx,]$value - (max(df.stait$value, na.rm = T) + min(df.stait$value, na.rm = T)))
 
@@ -185,11 +185,11 @@ for (i in 1:nrow(df.sub)) {
 }
 
 # load csv with subIDs and IQs from other studies [!MISSING]
-#df.iqs = read_delim(file = paste("subID_iq.csv", sep = "/"), show_col_types = F) %>%
-#  select(subID, MWT_iq, CFT_iq) %>% drop_na()
+df.iqs = read_csv(file = paste("subID_iq.csv", sep = "/"), show_col_types = F) %>%
+  select(subID, CFT_iq) %>% drop_na()
 
 # update our df.sub with these values
-#df.sub = rows_update(df.sub, df.iqs) 
+df.sub = rows_update(df.sub, df.iqs) 
 
 # check if there are still IQ values missing
 if (nrow(df.sub %>% filter(is.na(CFT_iq))) > 0) {
