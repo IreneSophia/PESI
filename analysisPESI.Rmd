@@ -28,10 +28,10 @@ lapply(ls.packages, library, character.only=TRUE)
 options(mc.cores = parallel::detectCores())
 
 # set file paths
-fl.path = '/home/emba/Documents/PESI'
+fl.path = '/home/iplank/Documents/PESI'
 dt.path = paste(fl.path, 'BVET', sep = "/")
 
-knitr::opts_knit$set(root.dir = '/home/emba/Documents/PESI/brms-PESI_sim')
+knitr::opts_knit$set(root.dir = '/home/iplank/Documents/PESI/brms-PESI_sim')
 
 # graph settings 
 c_light = "#a9afb2"; c_light_highlight = "#8ea5b2"; c_mid = "#6b98b2" 
@@ -43,7 +43,7 @@ sz = 1
 # settings for the SBC package
 use_cmdstanr = getOption("SBC.vignettes_cmdstanr", TRUE) # Set to false to use rst
 options(brms.backend = "cmdstanr")
-cache_dir = file.path("/home/emba/Documents/PESI/brms-PESI_sim", "_brms_SBC_cache")
+cache_dir = file.path("/home/iplank/Documents/PESI/brms-PESI_sim", "_brms_SBC_cache")
 if(!dir.exists(cache_dir)) {
   dir.create(cache_dir)
 }
@@ -380,7 +380,7 @@ warm = 10000
 m.pesi = brm(f.pesi,
             df.agg, prior = priors,
             iter = iter, warmup = warm,
-            backend = "cmdstanr", threads = threading(8),
+            backend = "cmdstanr", threads = threading(4),
             file = file.path(cache_dir,"m_PESI_final"),
             save_pars = save_pars(all = TRUE)
             )
@@ -516,7 +516,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                   (sync + dyad.type | subID) ,
                df.agg, prior = priors,
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi1"),
                save_pars = save_pars(all = TRUE)
                )
@@ -530,7 +530,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                   (sync + dyad.type | subID) ,
                df.agg, prior = priors,
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi2"),
                save_pars = save_pars(all = TRUE)
                )
@@ -542,7 +542,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                   (sync + dyad.type | subID) ,
                df.agg, prior = priors %>% filter(coef != "diagnosis1:dyad.type1"),
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi3"),
                save_pars = save_pars(all = TRUE)
                )
@@ -554,7 +554,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                   (sync + dyad.type | subID) ,
                df.agg, prior = priors %>% filter(coef != "sync1:dyad.type1"),
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi4"),
                save_pars = save_pars(all = TRUE)
                )
@@ -565,7 +565,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                   (sync + dyad.type | subID) ,
                df.agg, prior = priors %>% filter(coef != "diagnosis1:dyad.type1"),
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi5"),
                save_pars = save_pars(all = TRUE)
                )
@@ -575,7 +575,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                df.agg, prior = priors %>% filter(coef != "diagnosis1:dyad.type1" &
                                                    coef != "sync1:dyad.type1"),
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi6"),
                save_pars = save_pars(all = TRUE)
                )
@@ -584,7 +584,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                   (sync + dyad.type | subID) ,
                df.agg, prior = priors %>% filter(coef != "sync1:dyad.type1"),
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi7"),
                save_pars = save_pars(all = TRUE)
                )
@@ -596,7 +596,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                   (sync + dyad.type | subID) ,
                df.agg, prior = priors,
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi8"),
                save_pars = save_pars(all = TRUE)
                )
@@ -608,7 +608,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                   (sync + dyad.type | subID) ,
                df.agg, prior = priors %>% filter(coef != "diagnosis1"),
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi9"),
                save_pars = save_pars(all = TRUE)
                )
@@ -618,7 +618,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                   (sync + dyad.type | subID) ,
                df.agg, prior = priors %>% filter(coef != "sync1"),
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi10"),
                save_pars = save_pars(all = TRUE)
                )
@@ -628,7 +628,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                   (sync + dyad.type | subID) ,
                df.agg, prior = priors %>% filter(coef != "dyad.type1"),
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi11"),
                save_pars = save_pars(all = TRUE)
                )
@@ -639,7 +639,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                df.agg, prior = priors %>% filter(coef != "sync1" &
                                                    coef != "diagnosis1"),
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi12"),
                save_pars = save_pars(all = TRUE)
                )
@@ -648,7 +648,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                df.agg, prior = priors %>% filter(coef != "dyad.type1" &
                                                    coef != "sync1"),
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi13"),
                save_pars = save_pars(all = TRUE)
                )
@@ -657,7 +657,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                df.agg, prior = priors %>% filter(coef != "dyad.type1" & 
                                                    coef != "diagnosis1"),
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi14"),
                save_pars = save_pars(all = TRUE)
                )
@@ -667,7 +667,7 @@ if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
                   (sync + dyad.type | subID) ,
                df.agg, prior = priors %>% filter(class != "b"),
                iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(8),
+               backend = "cmdstanr", threads = threading(4),
                file = file.path(cache_dir,"m_pesi15"),
                save_pars = save_pars(all = TRUE)
                )
