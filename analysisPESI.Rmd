@@ -102,14 +102,16 @@ df.stm = read_csv(paste(fl.path, "PESI_videosel-full_230404.csv", sep = "/"), sh
 # merge together
 df = merge(df.beh, df.stm, all.x = T, by = "video") %>%
   mutate(
-         rating.confirmed = case_when(
-           confirmed == 1 ~ rating),  # convert to percentages if rating was confirmed
+    # only use trials with confirmed rating and correct video duration
+    use = if_else(confirmed == 1 & abs(dur-10) < 0.1, 1,0), 
+    rating.confirmed = if_else(use == 1, rating, NA),
     dyad.type = case_match(context, 
                            "homogeneous" ~ "non-autistic",
                            "heterogeneous" ~ "mixed")
          ) %>%
   arrange(subID, trl) %>%
   mutate_if(is.character, as.factor)
+rm(df.beh)
 
 # merge with group information
 df = merge(df.sub %>% select(subID, diagnosis), df, all.y = T)
@@ -121,7 +123,7 @@ df %>% select(subID, diagnosis) %>% distinct() %>% group_by(diagnosis) %>% count
 df = df %>%
   group_by(subID) %>%
   mutate(
-    total = sum(confirmed)/64
+    total = sum(use)/64
   ) %>%
   filter(total > 2/3)
   
