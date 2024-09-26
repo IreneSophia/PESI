@@ -2,12 +2,12 @@
 title: "PESI analysis with brms"
 author: "I. S. Plank"
 date: "`r Sys.Date()`"
-output: html_document
+output: pdf_document
 ---
 
 ```{r settings, include=FALSE}
 
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = T, warning = F, message = F, fig.align = 'center', fig.width = 9)
 ls.packages = c("knitr",            # kable
                 "ggplot2",          # plots
                 "brms",             # Bayesian lmms
@@ -19,6 +19,7 @@ ls.packages = c("knitr",            # kable
                 "bayesplot",        # plots for posterior predictive checks
                 "SBC",              # plots for checking computational faithfulness
                 "rstatix",          # anova
+                "readODS",          # reading in ODS spreadsheets
                 "BayesFactor"
                 )
 
@@ -27,23 +28,19 @@ lapply(ls.packages, library, character.only=TRUE)
 # set cores
 options(mc.cores = parallel::detectCores())
 
-# set file paths
-fl.path = '/home/iplank/Documents/PESI'
-dt.path = paste(fl.path, 'BVET', sep = "/")
-
-knitr::opts_knit$set(root.dir = '/home/iplank/Documents/PESI/brms-PESI_sim')
-
 # graph settings 
 c_light = "#a9afb2"; c_light_highlight = "#8ea5b2"; c_mid = "#6b98b2" 
 c_mid_highlight = "#3585b2"; c_dark = "#0072b2"; c_dark_highlight = "#0058b2" 
 c_green = "#009E73"
-c_dark_green = "#006f50"
 sz = 1
+
+# custom colour palette
+custom.col = c(c_dark_highlight, c_green, "#CC79A7", "#D55E00")
 
 # settings for the SBC package
 use_cmdstanr = getOption("SBC.vignettes_cmdstanr", TRUE) # Set to false to use rst
 options(brms.backend = "cmdstanr")
-cache_dir = file.path("/home/iplank/Documents/PESI/brms-PESI_sim", "_brms_SBC_cache")
+cache_dir = "./_brms_SBC_cache"
 if(!dir.exists(cache_dir)) {
   dir.create(cache_dir)
 }
@@ -51,9 +48,6 @@ if(!dir.exists(cache_dir)) {
 # use parallel processing
 library(future)
 plan(multisession)
-
-# number of simulations
-nsim = 1000
 
 ```
 
@@ -64,6 +58,26 @@ nsim = 1000
   margin-right: auto;
 }
 </style>
+
+# Introduction
+
+[!ADD info on study and task]
+
+## Some general settings
+
+```{r set}
+
+# number of simulations
+nsim = 500
+
+# set number of iterations and warmup for models
+iter = 3000
+warm = 1000
+
+# set the seed
+set.seed(2468)
+
+```
 
 ## Package versions
 
@@ -77,62 +91,369 @@ for (package in ls.packages) {
 
 ```
 
-## Introduction and preparation
+## General info
 
-# Behavioural data
+We planned to determine the group-level effect subjects following Barr (2013). For each model, experiment specific priors were set based on previous literature or the task (see comments in the code).
 
-```{r load_bv, warning=F, message=F}
+We perform prior predictive checks as proposed in Schad, Betancourt and Vasishth (2020) using the SBC package. To do so, we create `r print(nsim)` simulated datasets where parameters are simulated from the priors. These parameters are used to create one fake dataset. Both the true underlying parameters and the simulated values are saved.
 
-# load the relevant data in long format
-df.beh = list.files(path = dt.path, pattern = "PESI-BV", full.names = T) %>%
-  map_df(~read_delim(., show_col_types = F, delim = ",",
-                     col_types = "cddcccddddd")) %>%
-  select(-dyad)
+Then, we create graphs showing the prior predictive distribution of the simulated discrimination threshold to check whether our priors fit our general expectations about the data. Next, we perform checks of computational faithfulness and model sensitivity as proposed by Schad, Betancourt and Vasishth (2020) and implemented in the SBC package. We create models for each of the simulated datasets. Last, we calculate performance metrics for each of these models, focusing on the population-level parameters.
 
-# load demographic information to get diagnostic status 
-df.sub = read_csv(file.path(dt.path, "PESI_centraXX.csv"), show_col_types = F)
+## Preparation and group comparisons 
 
-# load the stimulus description file
-df.stm = read_csv(paste(fl.path, "PESI_videosel-full_230404.csv", sep = "/"), show_col_types = F) %>%
-  mutate(
-    video = sprintf("PESI_%s_%08d", substr(dyad,1,3), frame_sta)
-  ) %>%
-  select(video, dyad, context, mot, peak)
+First, we load the data and combine it with demographic information including the diagnostic status of the subjects. Then, all predictors are set to sum contrasts. We have a look at the demographics describing our two diagnostic groups: autistic adults and adults without any neurological and psychiatric diagnoses. 
 
-# merge together
-df = merge(df.beh, df.stm, all.x = T, by = "video") %>%
-  mutate(
-    # only use trials with confirmed rating and correct video duration
-    use = if_else(confirmed == 1 & abs(dur-10) < 0.1, 1,0), 
-    rating.confirmed = if_else(use == 1, rating, NA),
-    dyad.type = case_match(context, 
-                           "homogeneous" ~ "non-autistic",
-                           "heterogeneous" ~ "mixed")
-         ) %>%
-  arrange(subID, trl) %>%
-  mutate_if(is.character, as.factor)
-rm(df.beh)
+Since this is sensitive data, we load the anonymised version of the processed data at this point but also leave the code we used to create it. 
 
-# merge with group information
-df = merge(df.sub %>% select(subID, diagnosis), df, all.y = T)
+```{r prep_data}
 
-# how many participants per group? 
-df %>% select(subID, diagnosis) %>% distinct() %>% group_by(diagnosis) %>% count()
-
-# exclude participants with more than 33% of trials missing
-df = df %>%
-  group_by(subID) %>%
-  mutate(
-    total = sum(use)/64
-  ) %>%
-  filter(total > 2/3)
+# check if the data file exists, if yes load it:
+if (!file.exists("PESI_data.RData")) {
   
-# how many participants left? 
-df %>% select(subID, diagnosis) %>% distinct() %>% group_by(diagnosis) %>% count()
+  # set file paths
+  fl.path = '/media/emba/emba-2/PESI'
+  dt.path = paste(fl.path, 'BVET', sep = "/")
+  
+  # read in list of participants
+  df.inc = read_ods(file.path(fl.path, "PESI_inc.ods"), range = "A1:K100") 
+  
+  # create an anonymisation key
+  df.inc = df.inc %>%
+    mutate(
+      PID   = subID,
+      subID = as.numeric(as.factor(subID))
+    )
+  df.recode = df.inc %>% select(PID, subID) %>% distinct()
+  recode = as.character(df.recode$subID)
+  names(recode) = df.recode$PID
+  
+  # filter out pilots and cancelled testings
+  df.inc = df.inc %>%
+    filter(include_BV == 1)
+  
+  # load the relevant data in long format
+  df.beh = list.files(path = dt.path, pattern = "PESI-BV", full.names = T) %>%
+    map_df(~read_delim(., show_col_types = F, delim = ",",
+                       col_types = "cddcccddddd")) %>%
+    select(-dyad) %>%
+    filter(subID %in% df.inc$PID) %>%
+    group_by(subID) %>%
+    mutate(
+      no_trials = n()
+    ) %>%
+    # filter out participants where not the full task was recorded > no participants
+    filter(no_trials == 64)
+  
+  # load demographic information to get diagnostic status 
+  df.sub = read_csv(file.path(dt.path, "PESI_centraXX.csv"), show_col_types = F) %>%
+    mutate(
+      diagnosis = recode(diagnosis, "CTR" = "COMP")
+    ) 
+  
+  # load PST values
+  df.pst = read_csv(file.path(dt.path, "PST_simult-params.csv"), show_col_types = F) %>%
+    rename("subID" = "ID")
+  
+  # load the stimulus description file
+  df.stm = read_csv(paste(fl.path, "PESI_videosel-full_230404.csv", 
+                          sep = "/"), show_col_types = F) %>%
+    mutate(
+      video = sprintf("PESI_%s_%08d", substr(dyad,1,3), frame_sta)
+    ) %>%
+    select(video, dyad, context, mot, peak)
+  
+  # merge together
+  df = merge(df.beh, df.stm, all.x = T, by = "video") %>%
+    mutate(
+      # only use trials with confirmed rating and correct video duration
+      use = if_else(confirmed == 1 & abs(dur-10) < 0.1, 1,0), 
+      rating.confirmed = if_else(use == 1, rating, NA),
+      dyad.type = case_match(context, 
+                             "homogeneous" ~ "non-autistic",
+                             "heterogeneous" ~ "mixed")
+           ) %>%
+    arrange(subID, trl)
 
-# save subIDs of participants that can be used
-write_csv(df %>% select(subID, diagnosis) %>% distinct(), 
-          file = file.path(dt.path, "PESI_inc.csv"))
+  # merge with group information and PST values
+  df = merge(df.sub %>% select(subID, diagnosis), df, all.y = T) %>%
+    merge(., df.pst, all.x = T) %>%
+    mutate_if(is.character, as.factor)
+  
+  # check how many participants per group need to be excluded
+  df.exc = df %>%
+    group_by(subID, diagnosis) %>%
+    summarise(
+      total = sum(use)/64
+    ) %>%
+    filter(total <= 2/3) %>%
+    group_by(diagnosis) %>%
+    summarise(
+      n = n()
+    )
+  
+  # exclude participants with more than 33% of trials missing
+  df = df %>%
+    group_by(subID) %>%
+    mutate(
+      total = sum(use)/64
+    ) %>%
+    filter(total > 2/3)
+  df.sub = df.sub %>% 
+    filter(subID %in% df$subID) %>%
+    merge(., df.pst, all.x = T)
+  
+  # anonymise the data
+  df$subID = str_replace_all(df$subID, recode)
+  
+  # load preprocessed eye tracking data and rename variables
+  df.fix = readRDS(file.path(dt.path, "PESI-ET_agg.rds")) %>%
+    rename(
+      "trl" = "on_trialNo", "video" = "on_trialVid"
+    )
+  
+  # anonymise ET data in the same way as the behavioural data
+  df.fix$subID = str_replace_all(df.fix$subID, recode)
+  
+  # add information on the videos to the eye tracking data
+  df.fix = merge(df.fix, 
+                 df %>% select(video, dyad.type, sync, mot, peak), 
+                 all.x = T) %>%
+    # add diagnostic group
+    merge(., df.inc %>% select(subID, diagnosis) %>% distinct(), all.x = T)
+  
+  # get numbers of participants included in ET per group
+  df.incET = df.fix %>% 
+    select(subID, diagnosis) %>%
+    distinct() %>%
+    group_by(diagnosis) %>%
+    summarise(
+      n = n()
+    )
+  
+  # print gender frequencies and compare them across groups
+  tb.gen = xtabs(~ gender + diagnosis, data = df.sub)
+  ct.full = contingencyTableBF(tb.gen, sampleType = "indepMulti", fixedMargin = "cols")
+  
+  # check which outcomes of interest are normally distributed
+  df.sht = df.sub %>% 
+    group_by(diagnosis) %>%
+    shapiro_test(age, CFT_iq, BDI_total, STAITT_total, RAADS_total, ISH_total, 
+                 UI_total, sw_gz, sw_kl, thre, steep) %>% 
+    arrange(variable) %>%
+    mutate(
+      sig = if_else(p < 0.05, "*", "")
+    )
+  
+  # some of the measures are not normally distributed; 
+  # therefore, we compute ranks for these outcomes
+  df.sub = df.sub %>% 
+    mutate(
+      rBDI   = rank(BDI_total),
+      rISH   = rank(ISH_total),
+      rRAADS = rank(RAADS_total),
+      rUI    = rank(UI_total),
+      rage   = rank(age),
+      rsw_kl = rank(sw_kl),
+      rsteep = rank(steep),
+      rthre  = rank(thre),
+      diagnosis = as.factor(diagnosis)
+    )
+  
+  # now we can compute our ttests
+  ostt.age    = ttestBF(formula = rage         ~ diagnosis, data = df.sub)
+  ostt.iq     = ttestBF(formula = CFT_iq       ~ diagnosis, data = df.sub)
+  ostt.kl     = ttestBF(formula = sw_gz        ~ diagnosis, data = df.sub)
+  ostt.gz     = ttestBF(formula = rsw_kl       ~ diagnosis, data = df.sub)
+  ostt.STAITT = ttestBF(formula = STAITT_total ~ diagnosis, data = df.sub)
+  ostt.BDI    = ttestBF(formula = rBDI         ~ diagnosis, data = df.sub)
+  ostt.ISH    = ttestBF(formula = rISH         ~ diagnosis, data = df.sub)
+  ostt.RAADS  = ttestBF(formula = rRAADS       ~ diagnosis, data = df.sub)
+  ostt.UI     = ttestBF(formula = rUI          ~ diagnosis, data = df.sub)
+  ostt.thre   = ttestBF(formula = rthre        ~ diagnosis, data = df.sub)
+  ostt.steep  = ttestBF(formula = rsteep       ~ diagnosis, data = df.sub)
+  
+  # ...and put everything in a new dataframe for printing
+  measurement  = "Age"
+  ASD      = sprintf("%.2f (±%.2f)", 
+                     mean(df.sub[df.sub$diagnosis == "ASD",]$age), 
+                     sd(df.sub[df.sub$diagnosis == "ASD",]$age)/
+                       sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",])))
+  COMP      = sprintf("%.2f (±%.2f)", 
+                      mean(df.sub[df.sub$diagnosis == "COMP",]$age), 
+                      sd(df.sub[df.sub$diagnosis == "COMP",]$age)/
+                        sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",])))
+  logBF10 = sprintf("%.3f", ostt.age@bayesFactor[["bf"]])
+  df.table = data.frame(measurement, ASD, COMP, logBF10)
+  df.table = rbind(df.table,
+                   c(
+                     "BDI",
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "ASD",]$BDI_total), 
+                             sd(df.sub[df.sub$diagnosis == "ASD",]$BDI_total)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "COMP",]$BDI_total), 
+                             sd(df.sub[df.sub$diagnosis == "COMP",]$BDI_total)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
+                     sprintf("%.3f", ostt.BDI@bayesFactor[["bf"]])
+                   ),
+                   c(
+                     "Gender (diverse/agender/non-binary - female - male)",
+                     sprintf("%d - %d - %d",
+                             nrow(df.sub[df.sub$diagnosis == "ASD" & 
+                                           df.sub$gender == "dan",]), 
+                             nrow(df.sub[df.sub$diagnosis == "ASD" & 
+                                           df.sub$gender == "fem",]), 
+                             nrow(df.sub[df.sub$diagnosis == "ASD" & 
+                                           df.sub$gender == "mal",])),
+                     sprintf("%d - %d - %d", 
+                             nrow(df.sub[df.sub$diagnosis == "COMP" & 
+                                           df.sub$gender == "dan",]), 
+                             nrow(df.sub[df.sub$diagnosis == "COMP" & 
+                                           df.sub$gender == "fem",]), 
+                             nrow(df.sub[df.sub$diagnosis == "COMP" & 
+                                           df.sub$gender == "mal",])),
+                     sprintf("%.3f", ct.full@bayesFactor[["bf"]])
+                   ),
+                   c(
+                     "IQ",
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "ASD",]$CFT_iq), 
+                             sd(df.sub[df.sub$diagnosis == "ASD",]$CFT_iq)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "COMP",]$CFT_iq), 
+                             sd(df.sub[df.sub$diagnosis == "COMP",]$CFT_iq)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
+                     sprintf("%.3f", ostt.iq@bayesFactor[["bf"]])
+                   ),
+                   c(
+                     "RAADS",
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "ASD",]$RAADS_total), 
+                             sd(df.sub[df.sub$diagnosis == "ASD",]$RAADS_total)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "COMP",]$RAADS_total), 
+                             sd(df.sub[df.sub$diagnosis == "COMP",]$RAADS_total)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
+                     sprintf("%.3f", ostt.RAADS@bayesFactor[["bf"]])
+                   ),
+                   c(
+                     "D2 - concentration performance",
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "ASD",]$sw_kl), 
+                             sd(df.sub[df.sub$diagnosis == "ASD",]$sw_kl)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "COMP",]$sw_kl), 
+                             sd(df.sub[df.sub$diagnosis == "COMP",]$sw_kl)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
+                     sprintf("%.3f", ostt.kl@bayesFactor[["bf"]])
+                   ),
+                   c(
+                     "D2 - speed",
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "ASD",]$sw_gz), 
+                             sd(df.sub[df.sub$diagnosis == "ASD",]$sw_gz)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "COMP",]$sw_gz), 
+                             sd(df.sub[df.sub$diagnosis == "COMP",]$sw_gz)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
+                     sprintf("%.3f", ostt.gz@bayesFactor[["bf"]])
+                   ),
+                   c(
+                     "STAI-trait",
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "ASD",]$STAITT_total), 
+                             sd(df.sub[df.sub$diagnosis == "ASD",]$STAITT_total)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "COMP",]$STAITT_total), 
+                             sd(df.sub[df.sub$diagnosis == "COMP",]$STAITT_total)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
+                     sprintf("%.3f", ostt.STAITT@bayesFactor[["bf"]])
+                   ),
+                   c(
+                     "Ishihara",
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "ASD",]$ISH_total), 
+                             sd(df.sub[df.sub$diagnosis == "ASD",]$ISH_total)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "COMP",]$ISH_total), 
+                             sd(df.sub[df.sub$diagnosis == "COMP",]$ISH_total)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
+                     sprintf("%.3f", ostt.ISH@bayesFactor[["bf"]])
+                   ),
+                   c(
+                     "UI",
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "ASD",]$UI_total), 
+                             sd(df.sub[df.sub$diagnosis == "ASD",]$UI_total)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "COMP",]$UI_total), 
+                             sd(df.sub[df.sub$diagnosis == "COMP",]$UI_total)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
+                     sprintf("%.3f", ostt.UI@bayesFactor[["bf"]])
+                   ),
+                   c(
+                     "PST - threshold",
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "ASD",]$thre), 
+                             sd(df.sub[df.sub$diagnosis == "ASD",]$thre)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "COMP",]$thre), 
+                             sd(df.sub[df.sub$diagnosis == "COMP",]$thre)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
+                     sprintf("%.3f", ostt.thre@bayesFactor[["bf"]])
+                   ),
+                   c(
+                     "PST - steepness",
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "ASD",]$steep), 
+                             sd(df.sub[df.sub$diagnosis == "ASD",]$steep)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
+                     sprintf("%.2f (±%.2f)", 
+                             mean(df.sub[df.sub$diagnosis == "COMP",]$steep), 
+                             sd(df.sub[df.sub$diagnosis == "COMP",]$steep)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
+                     sprintf("%.3f", ostt.steep@bayesFactor[["bf"]])
+                   )
+                ) %>% arrange(measurement)
+  
+  # save it all
+  df = df %>% select(subID, diagnosis, video, run, trl, sync, rating, dyad.type, 
+                     mot, peak, rating.confirmed, thre, steep)
+  save(df, df.table, df.sht, ct.full, df.exc, df.incET, df.fix, 
+       file = "PESI_data.RData")
+  
+} else {
+  
+  load("PESI_data.RData")
+  
+}
+
+# print the group of included participants
+kable(df %>% select(subID, diagnosis) %>% distinct() %>% group_by(diagnosis) %>% count())
+
+# print the group of excluded participants
+kable(df.exc)
+rm(df.exc)
+
+# print number of included participants in eye tracking
+kable(df.incET)
+rm(df.incET)
+
+# print the outcome of the shapiro tests
+kable(df.sht)
+rm(df.sht)
+
+# print the outcome of the contingency table
+ct.full@bayesFactor
 
 # aggregate the data due to large differences between videos
 df.agg = df %>% 
@@ -142,112 +463,6 @@ df.agg = df %>%
   ) %>% ungroup() %>%
   mutate_if(is.character, as.factor)
 
-```
-
-## Demographic data
-
-```{r demo, warning=F, message=F}
-
-# print gender frequencies and compare them across groups
-tb.gen = xtabs(~ gender + diagnosis, data = df.sub)
-ct.full = contingencyTableBF(tb.gen, sampleType = "indepMulti", fixedMargin = "cols")
-
-# check which outcomes of interest are normally distributed
-kable(df.sub %>% 
-  group_by(diagnosis) %>%
-  shapiro_test(age, CFT_iq, BDI_total, STAITT_total, RAADS_total, ISH_total, UI_total, D2_total) %>% arrange(variable), digits = 3)
-
-# some of the measures are not normally distributed, therefore, we compute ranks for these outcomes
-df.sub = df.sub %>% 
-  mutate(
-    rBDI   = rank(BDI_total),
-    rRAADS = rank(RAADS_total),
-    rISH   = rank(ISH_total),
-    rUI    = rank(UI_total),
-    diagnosis = as.factor(diagnosis)
-  )
-
-# now we can compute our ANOVAs
-aov.age    = anovaBF(age          ~ diagnosis, data = df.sub)
-aov.iq     = anovaBF(CFT_iq       ~ diagnosis, data = df.sub)
-aov.D2     = anovaBF(D2_total     ~ diagnosis, data = df.sub)
-aov.STAITT = anovaBF(STAITT_total ~ diagnosis, data = df.sub)
-aov.BDI    = anovaBF(rBDI         ~ diagnosis, data = df.sub)
-aov.ISH    = anovaBF(rISH         ~ diagnosis, data = df.sub)
-aov.RAADS  = anovaBF(rRAADS       ~ diagnosis, data = df.sub)
-aov.UI     = anovaBF(rUI          ~ diagnosis, data = df.sub)
-
-# ...and put everything in a new dataframe for printing
-measurement  = "Age"
-ASD      = sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "ASD",]$age), sd(df.sub[df.sub$diagnosis == "ASD",]$age)/sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",])))
-CTR      = sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "CTR",]$age), sd(df.sub[df.sub$diagnosis == "CTR",]$age)/sqrt(nrow(df.sub[df.sub$diagnosis == "CTR",])))
-logBF10 = sprintf("%.3f", aov.age@bayesFactor[["bf"]])
-df.table = data.frame(measurement, ASD, CTR, logBF10)
-df.table = rbind(df.table,
-                 c(
-                   "BDI",
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "ASD",]$BDI_total), sd(df.sub[df.sub$diagnosis == "ASD",]$BDI_total)/sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "CTR",]$BDI_total), sd(df.sub[df.sub$diagnosis == "CTR",]$BDI_total)/sqrt(nrow(df.sub[df.sub$diagnosis == "CTR",]))),
-                   sprintf("%.3f", aov.BDI@bayesFactor[["bf"]])
-                 ),
-                 c(
-                   "Gender (diverse/agender/non-binary - female - male)",
-                   sprintf("%d - %d - %d", nrow(df.sub[df.sub$diagnosis == "ASD" & df.sub$gender == "dan",]), nrow(df.sub[df.sub$diagnosis == "ASD" & df.sub$gender == "fem",]), nrow(df.sub[df.sub$diagnosis == "ASD" & df.sub$gender == "mal",])),
-                   sprintf("%d - %d - %d", nrow(df.sub[df.sub$diagnosis == "CTR" & df.sub$gender == "dan",]), nrow(df.sub[df.sub$diagnosis == "CTR" & df.sub$gender == "fem",]), nrow(df.sub[df.sub$diagnosis == "CTR" & df.sub$gender == "mal",])),
-                   sprintf("%.3f", ct.full@bayesFactor[["bf"]])
-                 ),
-                 c(
-                   "IQ",
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "ASD",]$CFT_iq), sd(df.sub[df.sub$diagnosis == "ASD",]$CFT_iq)/sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "CTR",]$CFT_iq), sd(df.sub[df.sub$diagnosis == "CTR",]$CFT_iq)/sqrt(nrow(df.sub[df.sub$diagnosis == "CTR",]))),
-                   sprintf("%.3f", aov.iq@bayesFactor[["bf"]])
-                 ),
-                 c(
-                   "RAADS",
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "ASD",]$RAADS_total), sd(df.sub[df.sub$diagnosis == "ASD",]$RAADS_total)/sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "CTR",]$RAADS_total), sd(df.sub[df.sub$diagnosis == "CTR",]$RAADS_total)/sqrt(nrow(df.sub[df.sub$diagnosis == "CTR",]))),
-                   sprintf("%.3f", aov.RAADS@bayesFactor[["bf"]])
-                 ),
-                 c(
-                   "D2",
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "ASD",]$D2_total), sd(df.sub[df.sub$diagnosis == "ASD",]$D2_total)/sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "CTR",]$D2_total), sd(df.sub[df.sub$diagnosis == "CTR",]$D2_total)/sqrt(nrow(df.sub[df.sub$diagnosis == "CTR",]))),
-                   sprintf("%.3f", aov.D2@bayesFactor[["bf"]])
-                 ),
-                 c(
-                   "STAI-trait",
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "ASD",]$STAITT_total), sd(df.sub[df.sub$diagnosis == "ASD",]$STAITT_total)/sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "CTR",]$STAITT_total), sd(df.sub[df.sub$diagnosis == "CTR",]$STAITT_total)/sqrt(nrow(df.sub[df.sub$diagnosis == "CTR",]))),
-                   sprintf("%.3f", aov.STAITT@bayesFactor[["bf"]])
-                 ),
-                 c(
-                   "Ishihara",
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "ASD",]$ISH_total), sd(df.sub[df.sub$diagnosis == "ASD",]$ISH_total)/sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "CTR",]$ISH_total), sd(df.sub[df.sub$diagnosis == "CTR",]$ISH_total)/sqrt(nrow(df.sub[df.sub$diagnosis == "CTR",]))),
-                   sprintf("%.3f", aov.ISH@bayesFactor[["bf"]])
-                 ),
-                 c(
-                   "UI",
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "ASD",]$UI_total), sd(df.sub[df.sub$diagnosis == "ASD",]$UI_total)/sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
-                   sprintf("%.2f (±%.2f)", mean(df.sub[df.sub$diagnosis == "CTR",]$UI_total), sd(df.sub[df.sub$diagnosis == "CTR",]$UI_total)/sqrt(nrow(df.sub[df.sub$diagnosis == "CTR",]))),
-                   sprintf("%.3f", aov.UI@bayesFactor[["bf"]])
-                 )
-              ) %>% arrange(measurement)
-# print all of this
-kable(df.table)
-
-
-```
-## Setting up the model
-
-We use sum coding for all population-level effects. We planned to determine the group-level effect subjects following Barr (2013), resulting in random slopes for synchrony, dyad type and their interaction, however, we dropped the random slope of the interaction due all models showing divergent transitions during simulation-based calibration. 
-
-We perform prior predictive checks as proposed in Schad, Betancourt and Vasishth (2020). To do so, we create `r nsim` simulations. In each simulation, parameters are simulated from the priors based on a helper script from Schad, Betancourt and Vasishth (2020). Then, these parameters are used to create one fake data set. Both the true underlying parameters and the simulated discrimination values are saved. Then, we create graphs showing the prior predictive distribution of the simulated ratings. Next, we perform checks of computational faithfulness and model sensitivity as proposed by Schad, Betancourt and Vasishth (2020) and implemented in the SBC package. We create models for each of the simulated data sets. Then, we calculate performance metrics for each of these models. We focus on the population-level parameters.
-
-```{r priorpc_SBC, fig.align='center', fig.width=6, fig.height=24, message=F}
-
-code = "PESI-agg_ms"
-
 # set and print the contrasts
 contrasts(df.agg$sync) = contr.sum(2)
 contrasts(df.agg$sync)
@@ -256,7 +471,22 @@ contrasts(df.agg$dyad.type)
 contrasts(df.agg$diagnosis) = contr.sum(2)
 contrasts(df.agg$diagnosis)
 
-# find out which priors need to be set
+# print final group comparisons for the paper
+kable(df.table)
+
+```
+
+The two diagnostic groups are similar in age, concentration and speed (D2), colorblindness score (Ishihara), IQ and gender distribution as well as on a perceptual simultaneity task (PST). However, they seem to differ in their questionnaire scores measuring depressive symptoms (BDI), autism (RAADS), trait anxiety (STAI-trait) and intolerance of uncertainty (UI). 
+
+## Ratings 
+
+### Model of aggregated ratings
+
+```{r sbc_setup, fig.height=24}
+
+code = "PESI-agg"
+
+# set formula considering all combinations
 f.pesi = brms::bf(rating.confirmed ~ diagnosis * sync * dyad.type 
                   + (sync + dyad.type | subID) )
 
@@ -278,12 +508,14 @@ priors = c(
   prior(normal(0,    5), class = b)
 )
 
-if (file.exists(file.path(cache_dir, paste0("res_", code, ".rds")))) {
+if (file.exists(file.path(cache_dir, paste0("df_res_", code, ".rds")))) {
   # load in the results of the SBC
   df.results = readRDS(file.path(cache_dir, paste0("df_res_", code, ".rds")))
   df.backend = readRDS(file.path(cache_dir, paste0("df_div_", code, ".rds")))
   dat        = readRDS(file.path(cache_dir, paste0("dat_", code, ".rds")))
 } else {
+  # set the seed
+  set.seed(2469)
   # create the data
   gen  = SBC_generator_brms(f.pesi, data = df.agg, prior = priors, 
                             thin = 50, warmup = 20000, refresh = 2000
@@ -293,21 +525,26 @@ if (file.exists(file.path(cache_dir, paste0("res_", code, ".rds")))) {
   
   # perform the SBC
   bck = SBC_backend_brms_from_generator(gen, chains = 4, thin = 1, 
-                                        warmup = 1500, iter = 4500,               
+                                        warmup = warm, iter = iter,               
                                         inits = 0.1)
   res = compute_SBC(dat, bck,
                     cache_mode = "results", 
                     cache_location = file.path(cache_dir, sprintf("res_%s", code)))
   # save the results dataframes
-  saveRDS(res$stats, file = file.path(cache_dir, paste0("df_res_", code, ".rds")))
-  saveRDS(res$backend_diagnostics, file = file.path(cache_dir, paste0("df_div_", code, ".rds")))
+  df.results = res$stats
+  df.backend = res$backend_diagnostics
+  saveRDS(df.results, file = file.path(cache_dir, paste0("df_res_", code, ".rds")))
+  saveRDS(df.backend, file = file.path(cache_dir, paste0("df_div_", code, ".rds")))
+  
 }
 
 ```
 
-We start by investigating the Rhats and the number of divergent samples. This shows that `r nrow(df.results %>% group_by(sim_id) %>% summarise(rhat = max(rhat, na.rm = T)) %>% filter(rhat >= 1.05))` of `r max(df.results$sim_id)` simulations had at least one parameter that had an rhat of at least 1.05. However, `r nrow(df.backend %>% filter(n_divergent > 0))` models had divergent samples (mean number of samples of the simulations with divergent samples: `r as.numeric(df.backend %>% filter(n_divergent > 0) %>% summarise(n_divergent = mean(n_divergent)))`). This suggests that this model performs much better than the one including random slopes for the interaction. We decide to go ahead. 
+We start by investigating the rhats and the number of divergent samples. This shows that `r nrow(df.results %>% group_by(sim_id) %>% summarise(rhat = max(rhat, na.rm = T)) %>% filter(rhat >= 1.05))` of `r nsim` simulations had at least one parameter that had an rhat of at least 1.05, and `r nrow(df.backend %>% filter(n_divergent > 0))` models had divergent samples (mean number of samples of the simulations with divergent samples: `r as.numeric(df.backend %>% filter(n_divergent > 0) %>% summarise(n_divergent = round(mean(n_divergent), digits = 2)))`). This suggests that the model performs well. 
 
-```{r priorpc_SBC2, fig.align='center', fig.width=9, fig.height=28, message=F}
+Next, we can plot the simulated values to perform prior predictive checks. 
+
+```{r sbc_checks1, fig.height=6}
 
 # create a matrix out of generated data
 dvname = gsub(" ", "", gsub("[\\|~].*", "", f.pesi)[1])
@@ -315,6 +552,7 @@ dvfakemat = matrix(NA, nrow(dat[['generated']][[1]]), length(dat[['generated']])
 for (i in 1:length(dat[['generated']])) {
   dvfakemat[,i] = dat[['generated']][[i]][[dvname]]
 }
+truePars = dat$variables
 
 # plot simulated data for prior predictive checks
 dvmax = 100
@@ -335,7 +573,7 @@ for (i in 1:dim(histmat)[1]) {
   quantmat[i,] = quantile(histmat[i,], p = probs, na.rm = T)
 }
 quantmat$x = breaks[2:length(breaks)] - binwidth/2 # add bin mean 
-p0 = ggplot(data = quantmat, aes(x = x)) + 
+ggplot(data = quantmat, aes(x = x)) + 
   geom_ribbon(aes(ymax = p0.9, ymin = p0.1), fill = c_light) + 
   geom_ribbon(aes(ymax = p0.8, ymin = p0.2), fill = c_light_highlight) + 
   geom_ribbon(aes(ymax = p0.7, ymin = p0.3), fill = c_mid) + 
@@ -344,21 +582,49 @@ p0 = ggplot(data = quantmat, aes(x = x)) +
   xlim(0, max(dvfakematH)) +
   theme_bw()
 
-# plot SBC with functions from the SBC package
-df.results.b = df.results %>% filter(substr(variable, 1, 2) == "b_")
-p1 = plot_ecdf_diff(df.results.b) +
-  theme_bw() + theme(legend.position = "none")
-p2 = plot_rank_hist(df.results.b, bins = 20) +
-  theme_bw()
-p3 = plot_sim_estimated(df.results.b, alpha = 0.5) +
-  theme_bw()
-p4 = plot_contraction(df.results.b, 
-                 prior_sd = setNames(c(10, rep(5, length(unique(df.results.b$variable))-1)), 
-                                     unique(df.results.b$variable))) +
-  theme_bw()
+```
 
-p = ggarrange(p0, p1, p2, p3, p4, labels = "AUTO", ncol = 1, nrow = 5, heights = c(1, 2, 2, 2, 2))
-annotate_figure(p, top = text_grob("Prior predictive checks and SBC", face = "bold", size = 14))
+[!ADD]
+
+```{r sbc_checks2, fig.height=12}
+
+# get simulation numbers with issues
+rank = max(df.results$max_rank)
+check = merge(df.results %>% 
+    group_by(sim_id) %>% 
+      summarise(
+        rhat = max(rhat, na.rm = T), 
+        mean_rank = mean(max_rank)
+        ) %>% 
+    filter(rhat >= 1.05 | mean_rank != rank), 
+  df.backend %>% filter(n_divergent > 0), all = T)
+
+# plot SBC with functions from the SBC package focusing on population-level parameters
+df.results.b = df.results %>% 
+  filter(substr(variable, 1, 2) == "b_") %>% 
+  filter(!(sim_id %in% check$sim_id))
+p1 = plot_ecdf_diff(df.results.b) + theme_bw() + theme(legend.position = "none") +
+  scale_x_continuous(breaks=scales::pretty_breaks(n = 3)) +
+  scale_y_continuous(breaks=scales::pretty_breaks(n = 3))
+p2 = plot_rank_hist(df.results.b, bins = 20) + theme_bw() +
+  scale_x_continuous(breaks=scales::pretty_breaks(n = 3)) +
+  scale_y_continuous(breaks=scales::pretty_breaks(n = 3))
+p3 = plot_sim_estimated(df.results.b, alpha = 0.5) + theme_bw() +
+  scale_x_continuous(breaks=scales::pretty_breaks(n = 3)) +
+  scale_y_continuous(breaks=scales::pretty_breaks(n = 3))
+p4 = plot_contraction(
+  df.results.b, 
+  prior_sd = setNames(c(10, 
+                        rep(5, length(unique(df.results.b$variable))-1)), 
+                      unique(df.results.b$variable))) +
+  theme_bw() +
+  scale_x_continuous(breaks=scales::pretty_breaks(n = 3)) +
+  scale_y_continuous(breaks=scales::pretty_breaks(n = 3))
+
+p = ggarrange(p1, p2, p3, p4, labels = "AUTO", ncol = 1, nrow = 4)
+annotate_figure(p, 
+                top = text_grob("Computational faithfulness and model sensitivity", 
+                face = "bold", size = 14))
 
 ```
 
@@ -372,16 +638,15 @@ Last, we explore the z-score and the posterior contraction of our population-lev
 
 As the next step, we fit the model and check whether the chains have converged, which they seem to have. We then perform posterior predictive checks on the model using the bayesplot package.
 
-```{r postpc, fig.align='center', fig.width=6, fig.height=8, message=F}
+```{r postpc, fig.height = 12}
 
-# fit the maximal model > lots of iterations to allow for BF computation
-iter = 40000
-warm = 10000
+# fit the maximal model
+set.seed(2486)
 m.pesi = brm(f.pesi,
             df.agg, prior = priors,
             iter = iter, warmup = warm,
-            backend = "cmdstanr", threads = threading(4),
-            file = file.path(cache_dir,"m_PESI_final"),
+            backend = "cmdstanr", threads = threading(8),
+            file = "m_PESI_final",
             save_pars = save_pars(all = TRUE)
             )
 
@@ -392,29 +657,40 @@ sum(subset(nuts_params(m.pesi), Parameter == "divergent__")$Value)
 sum(brms::rhat(m.pesi) >= 1.01, na.rm = T)
 
 # and the chains have converged
-plot(m.pesi, variable = "^b_", regex = TRUE, N = 8) + 
-  theme_bw()
+post.draws = as_draws_df(m.pesi)
+mcmc_trace(post.draws, regex_pars = "^b_",
+           facet_args = list(ncol = 2)) +
+  scale_x_continuous(breaks=scales::pretty_breaks(n = 3)) +
+  scale_y_continuous(breaks=scales::pretty_breaks(n = 3))
 
 ```
 
-This model has no divergent samples, and no rhats that are higher or equal to 1.01. Therefore, we go ahead and perform our posterior predictive checks. 
+This model has no divergent samples, and no rhat that is higher or equal to 1.01. Therefore, we go ahead and perform our posterior predictive checks. 
 
-```{r postpc2, fig.align='center', fig.width=6, fig.height=6, message=F, eval=T}
+```{r postpc2, fig.height=6}
 
 # get the posterior predictions
 post.pred = posterior_predict(m.pesi, ndraws = nsim)
 
 # check the fit of the predicted data compared to the real data
 p1 = pp_check(m.pesi, ndraws = nsim) + 
-  theme_bw() + theme(legend.position = "none")
+  theme_bw() + theme(legend.position = "none") + xlim(0,100)
 
 # distributions of means and sds compared to the real values per group
 p2 = ppc_stat_grouped(df.agg$rating.confirmed, post.pred, df.agg$diagnosis) + 
   theme_bw() + theme(legend.position = "none")
+# ... sync level
+p3 = ppc_stat_grouped(df.agg$rating.confirmed, post.pred, df.agg$sync) + 
+  theme_bw() + theme(legend.position = "none")
+# ... and dyad type
+p4 = ppc_stat_grouped(df.agg$rating.confirmed, post.pred, df.agg$dyad.type) + 
+  theme_bw() + theme(legend.position = "none")
 
-p = ggarrange(p1, p2,
-          nrow = 2, ncol = 1, labels = "AUTO")
-annotate_figure(p, top = text_grob("Posterior predictive checks", face = "bold", size = 14))
+p = ggarrange(p1, p2, p3, p4,
+          nrow = 2, ncol = 2, labels = "AUTO")
+annotate_figure(p, 
+                top = text_grob("Posterior predictive checks", 
+                face = "bold", size = 14))
 
 ```
 
@@ -424,15 +700,17 @@ The predictions based on the model capture the data very well. The means for eac
 
 Now that we are convinced that we can trust our model, we have a look at the model and its estimates.
 
-```{r final, fig.align='center', fig.width=6, fig.height=6, message=F, eval=T}
+```{r final, fig.height=6}
 
 # print a summary
 summary(m.pesi)
 
-# plot the posterior distributions:
-as_draws_df(m.pesi) %>% 
+# plot the posterior distributions
+post.draws %>% 
   select(starts_with("b_")) %>%
-  pivot_longer(cols = starts_with("b_"), names_to = "coef", values_to = "estimate") %>%
+  pivot_longer(cols = starts_with("b_"), 
+               names_to = "coef", 
+               values_to = "estimate") %>%
   subset(!startsWith(coef, "b_Int")) %>%
   mutate(
     coef = substr(coef, 3, nchar(coef)),
@@ -447,9 +725,19 @@ as_draws_df(m.pesi) %>%
       T ~ 100-nchar(coef)),
     coef = fct_reorder(coef, coef_order)
   ) %>% 
-  ggplot(aes(x = estimate, y = coef)) +
+  group_by(coef) %>%
+  mutate(
+    cred = case_when(
+      (mean(estimate) < 0 & quantile(estimate, probs = 0.975) < 0) |
+        (mean(estimate) > 0 & quantile(estimate, probs = 0.025) > 0) ~ "credible",
+      T ~ "not credible"
+    )
+  ) %>% ungroup() %>% 
+  ggplot(aes(x = estimate, y = coef, fill = cred)) +
   geom_vline(xintercept = 0, linetype = 'dashed') +
-  ggdist::stat_halfeye(fill = c_dark_highlight, alpha = 0.7) + ylab(NULL) + theme_bw()
+  ggdist::stat_halfeye(alpha = 0.7) + ylab(NULL) + theme_bw() +
+  scale_fill_manual(values = c(credible = c_dark, c_light)) + 
+  theme(legend.position = "none")
 
 ```
 
@@ -458,321 +746,68 @@ as_draws_df(m.pesi) %>%
 
 ```{r inf}
 
-# H1.1 Context: Social interactions of no-diagnosis non-autistic dyads are rated more positively than mixed-diagnosis dyads consisting of one autistic and one non-autistic interaction partner. 
-hypothesis(m.pesi, "dyad.type1 < 0")
+# H1.1 Context: Social interactions of no-diagnosis non-autistic dyads are 
+# rated more positively than mixed-diagnosis dyads consisting of one autistic 
+# and one non-autistic interaction partner. 
+h1.1 = hypothesis(m.pesi, "dyad.type1 < 0")
+h1.1
 
-# H1.2 Synchrony: Social interactions with high interpersonal synchrony of motion energy are rated more positively than social interactions with low interpersonal synchrony of motion energy. 
-hypothesis(m.pesi, "sync1 > 0")
+# H1.2 Synchrony: Social interactions with high interpersonal synchrony of 
+# motion energy are rated more positively than social interactions with low 
+# interpersonal synchrony of motion energy. 
+h1.2 = hypothesis(m.pesi, "sync1 > 0")
+h1.2 
 
-# H1.3 Diagnostic status: Ratings of social interactions differ between autistic and non-autistic participants. 
-hypothesis(m.pesi, "diagnosis1 > 0")
+# H1.3 Diagnostic status: Ratings of social interactions differ between 
+# autistic and non-autistic participants. 
+h1.3 = hypothesis(m.pesi, "diagnosis1 > 0")
+h1.3
 
-# H1.4 Synchrony x dyad type: The effect of interpersonal motion synchrony on ratings is decreased for mixed-diagnosis dyads compared to no-diagnosis dyads. 
-hypothesis(m.pesi, "sync1:dyad.type1 < 0")
+# H1.4 Synchrony x dyad type: The effect of interpersonal motion synchrony 
+# on ratings is decreased for mixed-diagnosis dyads compared to no-diagnosis dyads. 
+h1.4 = hypothesis(m.pesi, "sync1:dyad.type1 < 0")
+h1.4
 
-# H1.5 Dyad type x diagnostic status: The effect of dyad type on ratings is decreased in autistic compared to non-autistic participants.
-hypothesis(m.pesi, "diagnosis1:dyad.type1 < 0")
+# H1.5 Dyad type x diagnostic status: The effect of dyad type on ratings is 
+# decreased in autistic compared to non-autistic participants.
+h1.5 = hypothesis(m.pesi, "diagnosis1:dyad.type1 < 0")
+h1.5
 
 ```
 
 ## Plots
 
-```{r plot, fig.align='center', fig.width=9, fig.height=6, message=F, warning=F}
+```{r plot, fig.height=6}
 
 # rain cloud plot for ratings
 df.agg %>%
-  ggplot(aes(sync, rating.confirmed, fill = dyad.type, colour= dyad.type)) +
-  geom_rain(alpha = .5, rain.side = 'r') +
-  stat_summary(fun = mean, geom = "line", aes(group = dyad.type, color = dyad.type)) +
-  stat_summary(fun = mean, geom = "point",
-               aes(group = dyad.type, color = dyad.type), shape = 18, size = 4) +
-  scale_fill_manual(values=c(c_green, c_dark)) +
-  scale_color_manual(values=c(c_green, c_dark)) +
-  facet_wrap(. ~ diagnosis) +
-  ggtitle("Mean confirmed ratings per subject") +
-  theme_bw() + 
+  ggplot(aes(sync, rating.confirmed, fill = dyad.type, colour = dyad.type)) + #
+  geom_rain(rain.side = 'r',
+boxplot.args = list(color = "black", outlier.shape = NA, 
+                    show_guide = FALSE, alpha = 0.5),
+violin.args = list(color = "black", outlier.shape = NA, 
+                   alpha = 0.5),
+boxplot.args.pos = list(
+  position = ggpp::position_dodgenudge(x = 0, width = 0.3), width = 0.3
+),
+point.args = list(show_guide = FALSE, alpha = .5),
+violin.args.pos = list(
+  width = 0.6, position = position_nudge(x = 0.16)),
+point.args.pos = list(position = 
+                        ggpp::position_dodgenudge(x = -0.25, width = 0.1))) +
   ylim(0, 100) +
-  theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5))
-  
+  scale_fill_manual(values = custom.col) +
+  scale_color_manual(values = custom.col) +
+  labs(title = "Mean confirmed ratings per subject", 
+       x = "", 
+       y = "rating") +
+  theme_bw() + 
+  theme(legend.position = "bottom", 
+        plot.title = element_text(hjust = 0.5), 
+        legend.direction = "horizontal", 
+        text = element_text(size = 15))
 
 ```
 
-## Bayes factor analysis
+# Fixation durations
 
-To complement our hypothesis testing using brms::hypothesis(), we perform a Bayes Factor analysis with models excluding some of our population-level predictors. 
-
-```{r bf_pesi}
-
-if (file.exists(file.path(cache_dir, "df.pesi.bf.rds"))) {
-  df.pesi.bf = readRDS(file = file.path(cache_dir, "df.pesi.bf.rds"))
-} else {
-  ## 3-way interaction
-  
-  # remove the three-way interaction
-  m.pesi1 = brm(rating.confirmed ~ diagnosis + sync + dyad.type + 
-                  diagnosis:sync +
-                  diagnosis:dyad.type +
-                  sync:dyad.type +
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors,
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi1"),
-               save_pars = save_pars(all = TRUE)
-               )
-  
-  ## 2-way interactions
-  
-  # remove interaction between diagnosis and sync
-  m.pesi2 = brm(rating.confirmed ~ diagnosis + sync + dyad.type + 
-                  diagnosis:dyad.type +
-                  sync:dyad.type +
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors,
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi2"),
-               save_pars = save_pars(all = TRUE)
-               )
-  
-  # remove interaction between diagnosis and dyad type
-  m.pesi3 = brm(rating.confirmed ~ diagnosis + sync + dyad.type + 
-                  diagnosis:sync +
-                  sync:dyad.type +
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors %>% filter(coef != "diagnosis1:dyad.type1"),
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi3"),
-               save_pars = save_pars(all = TRUE)
-               )
-  
-  # remove interaction between dyad type and sync
-  m.pesi4 = brm(rating.confirmed ~ diagnosis + sync + dyad.type + 
-                  diagnosis:sync +
-                  diagnosis:dyad.type +
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors %>% filter(coef != "sync1:dyad.type1"),
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi4"),
-               save_pars = save_pars(all = TRUE)
-               )
-  
-  # remove two two-way interactions at a time
-  m.pesi5 = brm(rating.confirmed ~ diagnosis + sync + dyad.type + 
-                  sync:dyad.type +
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors %>% filter(coef != "diagnosis1:dyad.type1"),
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi5"),
-               save_pars = save_pars(all = TRUE)
-               )
-  m.pesi6 = brm(rating.confirmed ~ diagnosis + sync + dyad.type + 
-                  diagnosis:sync +
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors %>% filter(coef != "diagnosis1:dyad.type1" &
-                                                   coef != "sync1:dyad.type1"),
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi6"),
-               save_pars = save_pars(all = TRUE)
-               )
-  m.pesi7 = brm(rating.confirmed ~ diagnosis + sync + dyad.type + 
-                  diagnosis:dyad.type +
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors %>% filter(coef != "sync1:dyad.type1"),
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi7"),
-               save_pars = save_pars(all = TRUE)
-               )
-  
-  # remove all two-way interactions
-  priors = priors %>% filter(coef != "diagnosis1:dyad.type1" &
-                               coef != "sync1:dyad.type1")
-  m.pesi8 = brm(rating.confirmed ~ diagnosis + sync + dyad.type + 
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors,
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi8"),
-               save_pars = save_pars(all = TRUE)
-               )
-  
-  ## main effects
-  
-  # remove diagnosis
-  m.pesi9 = brm(rating.confirmed ~ sync + dyad.type + 
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors %>% filter(coef != "diagnosis1"),
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi9"),
-               save_pars = save_pars(all = TRUE)
-               )
-  
-  # remove sync
-  m.pesi10 = brm(rating.confirmed ~ diagnosis + dyad.type + 
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors %>% filter(coef != "sync1"),
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi10"),
-               save_pars = save_pars(all = TRUE)
-               )
-  
-  # remove dyad type
-  m.pesi11 = brm(rating.confirmed ~ diagnosis + sync + 
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors %>% filter(coef != "dyad.type1"),
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi11"),
-               save_pars = save_pars(all = TRUE)
-               )
-  
-  # remove two main effects at a time
-  m.pesi12 = brm(rating.confirmed ~ dyad.type + 
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors %>% filter(coef != "sync1" &
-                                                   coef != "diagnosis1"),
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi12"),
-               save_pars = save_pars(all = TRUE)
-               )
-  m.pesi13 = brm(rating.confirmed ~ diagnosis + 
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors %>% filter(coef != "dyad.type1" &
-                                                   coef != "sync1"),
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi13"),
-               save_pars = save_pars(all = TRUE)
-               )
-  m.pesi14 = brm(rating.confirmed ~ sync +  
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors %>% filter(coef != "dyad.type1" & 
-                                                   coef != "diagnosis1"),
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi14"),
-               save_pars = save_pars(all = TRUE)
-               )
-  
-  # Intercept only
-  m.pesi15 = brm(rating.confirmed ~ 1 + 
-                  (sync + dyad.type | subID) ,
-               df.agg, prior = priors %>% filter(class != "b"),
-               iter = iter, warmup = warm,
-               backend = "cmdstanr", threads = threading(4),
-               file = file.path(cache_dir,"m_pesi15"),
-               save_pars = save_pars(all = TRUE)
-               )
-  
-  # check if models with marginal likelihood already exist
-  ls.files = dir(pattern = "MLL_pesi.*.rds", path = cache_dir)
-  if (length(ls.files) == 16) {
-    MLL.pesi   = readRDS(file.path(cache_dir, "MLL_pesi.rds"))
-    MLL.pesi1  = readRDS(file.path(cache_dir, "MLL_pesi1.rds"))
-    MLL.pesi2  = readRDS(file.path(cache_dir, "MLL_pesi2.rds"))
-    MLL.pesi3  = readRDS(file.path(cache_dir, "MLL_pesi3.rds"))
-    MLL.pesi4  = readRDS(file.path(cache_dir, "MLL_pesi4.rds"))
-    MLL.pesi5  = readRDS(file.path(cache_dir, "MLL_pesi5.rds"))
-    MLL.pesi6  = readRDS(file.path(cache_dir, "MLL_pesi6.rds"))
-    MLL.pesi7  = readRDS(file.path(cache_dir, "MLL_pesi7.rds"))
-    MLL.pesi8  = readRDS(file.path(cache_dir, "MLL_pesi8.rds"))
-    MLL.pesi9  = readRDS(file.path(cache_dir, "MLL_pesi9.rds"))
-    MLL.pesi10 = readRDS(file.path(cache_dir, "MLL_pesi10.rds"))
-    MLL.pesi11 = readRDS(file.path(cache_dir, "MLL_pesi11.rds"))
-    MLL.pesi12 = readRDS(file.path(cache_dir, "MLL_pesi12.rds"))
-    MLL.pesi13 = readRDS(file.path(cache_dir, "MLL_pesi13.rds"))
-    MLL.pesi14 = readRDS(file.path(cache_dir, "MLL_pesi14.rds"))
-    MLL.pesi15 = readRDS(file.path(cache_dir, "MLL_pesi15.rds"))
-  } else {
-    # use bridge sampler
-    MLL.pesi   = bridgesampling::bridge_sampler(m.pesi)
-    saveRDS(MLL.pesi,   file.path(cache_dir, "MLL_pesi.rds"))
-    MLL.pesi1  = bridgesampling::bridge_sampler(m.pesi1)
-    saveRDS(MLL.pesi1,  file.path(cache_dir, "MLL_pesi1.rds"))
-    MLL.pesi2  = bridgesampling::bridge_sampler(m.pesi2)
-    saveRDS(MLL.pesi2,  file.path(cache_dir, "MLL_pesi2.rds"))
-    MLL.pesi3  = bridgesampling::bridge_sampler(m.pesi3)
-    saveRDS(MLL.pesi3,  file.path(cache_dir, "MLL_pesi3.rds"))
-    MLL.pesi4  = bridgesampling::bridge_sampler(m.pesi4)
-    saveRDS(MLL.pesi4,  file.path(cache_dir, "MLL_pesi4.rds"))
-    MLL.pesi5  = bridgesampling::bridge_sampler(m.pesi5)
-    saveRDS(MLL.pesi5,  file.path(cache_dir, "MLL_pesi5.rds"))
-    MLL.pesi6  = bridgesampling::bridge_sampler(m.pesi6)
-    saveRDS(MLL.pesi6,  file.path(cache_dir, "MLL_pesi6.rds"))
-    MLL.pesi7  = bridgesampling::bridge_sampler(m.pesi7)
-    saveRDS(MLL.pesi7,  file.path(cache_dir, "MLL_pesi7.rds"))
-    MLL.pesi8  = bridgesampling::bridge_sampler(m.pesi8)
-    saveRDS(MLL.pesi8,  file.path(cache_dir, "MLL_pesi8.rds"))
-    MLL.pesi9  = bridgesampling::bridge_sampler(m.pesi9)
-    saveRDS(MLL.pesi9,  file.path(cache_dir, "MLL_pesi9.rds"))
-    MLL.pesi10 = bridgesampling::bridge_sampler(m.pesi10)
-    saveRDS(MLL.pesi10, file.path(cache_dir, "MLL_pesi10.rds"))
-    MLL.pesi11 = bridgesampling::bridge_sampler(m.pesi11)
-    saveRDS(MLL.pesi11, file.path(cache_dir, "MLL_pesi11.rds"))
-    MLL.pesi12 = bridgesampling::bridge_sampler(m.pesi12)
-    saveRDS(MLL.pesi12, file.path(cache_dir, "MLL_pesi12.rds"))
-    MLL.pesi13 = bridgesampling::bridge_sampler(m.pesi13)
-    saveRDS(MLL.pesi13, file.path(cache_dir, "MLL_pesi13.rds"))
-    MLL.pesi14 = bridgesampling::bridge_sampler(m.pesi14)
-    saveRDS(MLL.pesi14, file.path(cache_dir, "MLL_pesi14.rds"))
-    MLL.pesi15 = bridgesampling::bridge_sampler(m.pesi15)
-    saveRDS(MLL.pesi15, file.path(cache_dir, "MLL_pesi15.rds"))
-  }
-  
-  # compare all models to the intercept with Bayes Factor
-  bf = c(as.numeric(bayes_factor(MLL.pesi, MLL.pesi15, log = T)[["bf"]]), 
-         as.numeric(bayes_factor(MLL.pesi1, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi2, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi3, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi4, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi5, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi6, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi7, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi8, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi9, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi10, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi11, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi12, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi13, MLL.pesi15, log = T)[["bf"]]),
-         as.numeric(bayes_factor(MLL.pesi14, MLL.pesi15, log = T)[["bf"]])
-         )
-  
-  # get all formulas
-  model.formula = c(as.character(m.pesi[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi1[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi2[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi3[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi4[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi5[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi6[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi7[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi8[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi9[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi10[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi11[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi12[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi13[["formula"]][["formula"]][[3]])[2],
-            as.character(m.pesi14[["formula"]][["formula"]][[3]])[2]
-            )
-  
-  # create a data frame with the comparisons
-  df.pesi.bf = data.frame(model.formula, bf) %>% arrange(desc(bf))
-  df.pesi.bf = rbind(c("Intercept-only model", 1), df.pesi.bf) %>%
-    mutate(
-      bf = as.numeric(bf),
-      model.formula = gsub(' \\+ \\(.*\\)', "", model.formula)
-      )
-  saveRDS(df.pesi.bf, file = file.path(cache_dir, "df.pesi.bf.rds"))
-}
-
-kable(df.pesi.bf, digits = 3)
-
-```
