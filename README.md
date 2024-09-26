@@ -17,7 +17,7 @@ The original videos were already processes with a filter such that only outlines
 
 This repository includes scripts for the presentation of the paradigm, preprocessing of the data and analysis. Due to privacy issues, we only share preprocessed and anonymised data. Therefore, only the following analysis RMarkdown script can actually be run based on this repository: 
 
-* `brms-analyses_PESI.Rmd`
+* `analysesPESI.Rmd`
 
  There are some absolute paths in these scripts within if statements. Downloading everything in this repository should ensure that these are not executed. 
 
