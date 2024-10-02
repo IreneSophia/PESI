@@ -9,7 +9,7 @@ Part of the stimuli from Plank et al. (2023), *SciRep*., were used. Interpersona
 * only segments with total motion energy within 25 and 75 percentiles are used
 * of these, each 4 segments of each dyad with the highest and lowest synchrony values based on the peaks
 
-This resulted in a total of 64 10-second video segments of 8 dyads, always 4 high synchrony and 4 low synchrony. Half of the dyads consisted of one autistic and one non-autistic person, the other half of two non-autistic people. There were no differences in motion or synchrony between the two dyad types. 
+This resulted in a total of 64 10-second video segments of 8 dyads, always 4 high synchrony and 4 low synchrony. Half of the dyads consisted of one autistic and one non-autistic person, the other half of two non-autistic people. There were no differences in motion or synchrony between the two dyad types (see `prepro/stimevalPESI.Rmd')
 
 The original videos were already processes with a filter such that only outlines of the interaction partners were visible. One person was always coloured in green and one in white. Therefore, we processed the frames by greyscaling them and changing the contrast to make both interaction partners coloured white and the outlines well visible. Additionally, the frames were rescaled by a factor of 1.75. 
 
@@ -51,6 +51,7 @@ Data is shared in one RData `PESI_data.RData` file which can be read into R. Thi
 
 * subID : anonymised subject ID which is consistent with subID in df.fix
 * diagnosis : diagnostic status, either ASD for autistic adults or COMP for comparison group
+* dyad : which dyad is shown in the video segment
 * video : name of the video
 * run : run number (1 or 2)
 * trl : trial number (1 to 64)
@@ -74,8 +75,9 @@ Data is shared in one RData `PESI_data.RData` file which can be read into R. Thi
 * count : number of fixations for this AOI
 * fix.total : sum of duration of all fixations in this video
 * fix.dur : sum of duration of fixations on this AOI in this video
-* dyad.type : whether two non-autistic or one autistic and one non-autistic interaction partners are shown in the video (non-autistic or mixed)
 * sync : whether the video displayed high or low IPS of motion
+* dyad : which dyad is shown in the video segment
+* dyad.type : whether two non-autistic or one autistic and one non-autistic interaction partners are shown in the video (non-autistic or mixed)
 * mot : overall motion energy in the video
 * peak : continuous IPS of motion
 * diagnosis : diagnostic status, either ASD for autistic adults or COMP for comparison group

@@ -71,8 +71,8 @@ plan(multisession)
 nsim = 500
 
 # set number of iterations and warmup for models
-iter = 3000
-warm = 1000
+iter = 4500
+warm = 1500
 
 # set the seed
 set.seed(2468)
@@ -115,7 +115,8 @@ if (!file.exists("PESI_data.RData")) {
   dt.path = paste(fl.path, 'BVET', sep = "/")
   
   # read in list of participants
-  df.inc = read_ods(file.path(fl.path, "PESI_inc.ods"), range = "A1:K100") 
+  df.inc = read_ods(file.path(fl.path, "PESI_inc.ods"), range = "A1:K100") %>%
+    select(subID, include_BV, include_ET)
   
   # create an anonymisation key
   df.inc = df.inc %>%
@@ -135,7 +136,7 @@ if (!file.exists("PESI_data.RData")) {
   df.beh = list.files(path = dt.path, pattern = "PESI-BV", full.names = T) %>%
     map_df(~read_delim(., show_col_types = F, delim = ",",
                        col_types = "cddcccddddd")) %>%
-    select(-dyad) %>%
+    select(-dyad, -sync) %>%
     filter(subID %in% df.inc$PID) %>%
     group_by(subID) %>%
     mutate(
@@ -152,25 +153,25 @@ if (!file.exists("PESI_data.RData")) {
   
   # load PST values
   df.pst = read_csv(file.path(dt.path, "PST_simult-params.csv"), show_col_types = F) %>%
-    rename("subID" = "ID")
+    rename("subID" = "ID") %>% select(-group)
   
   # load the stimulus description file
   df.stm = read_csv(paste(fl.path, "PESI_videosel-full_230404.csv", 
                           sep = "/"), show_col_types = F) %>%
     mutate(
-      video = sprintf("PESI_%s_%08d", substr(dyad,1,3), frame_sta)
+      video = sprintf("PESI_%s_%08d", substr(dyad,1,3), frame_sta),
+      dyad.type = case_match(context, 
+                             "homogeneous" ~ "non-autistic",
+                             "heterogeneous" ~ "mixed")
     ) %>%
-    select(video, dyad, context, mot, peak)
+    select(video, dyad, sync, dyad.type, mot, peak)
   
   # merge together
   df = merge(df.beh, df.stm, all.x = T, by = "video") %>%
     mutate(
       # only use trials with confirmed rating and correct video duration
       use = if_else(confirmed == 1 & abs(dur-10) < 0.1, 1,0), 
-      rating.confirmed = if_else(use == 1, rating, NA),
-      dyad.type = case_match(context, 
-                             "homogeneous" ~ "non-autistic",
-                             "heterogeneous" ~ "mixed")
+      rating.confirmed = if_else(use == 1, rating, NA)
            ) %>%
     arrange(subID, trl)
 
@@ -215,11 +216,10 @@ if (!file.exists("PESI_data.RData")) {
   df.fix$subID = str_replace_all(df.fix$subID, recode)
   
   # add information on the videos to the eye tracking data
-  df.fix = merge(df.fix, 
-                 df %>% select(video, dyad.type, sync, mot, peak), 
-                 all.x = T) %>%
+  df.fix = merge(df.fix, df.stm, all.x = T) %>%
     # add diagnostic group
-    merge(., df.inc %>% select(subID, diagnosis) %>% distinct(), all.x = T)
+    merge(., df %>% select(subID, diagnosis) %>% distinct(), all.x = T) %>%
+    mutate(across(where(is.character), as.factor))
   
   # get numbers of participants included in ET per group
   df.incET = df.fix %>% 
@@ -426,8 +426,8 @@ if (!file.exists("PESI_data.RData")) {
                 ) %>% arrange(measurement)
   
   # save it all
-  df = df %>% select(subID, diagnosis, video, run, trl, sync, rating, dyad.type, 
-                     mot, peak, rating.confirmed, thre, steep)
+  df = df %>% select(subID, diagnosis, dyad, video, run, trl, sync, rating, 
+                     dyad.type, mot, peak, rating.confirmed, thre, steep)
   save(df, df.table, df.sht, ct.full, df.exc, df.incET, df.fix, 
        file = "PESI_data.RData")
   
@@ -457,7 +457,7 @@ ct.full@bayesFactor
 
 # aggregate the data due to large differences between videos
 df.agg = df %>% 
-  group_by(subID, diagnosis, sync, dyad.type) %>%
+  group_by(subID, diagnosis, dyad, sync, dyad.type) %>%
   summarise(
     rating.confirmed = mean(rating.confirmed, na.rm = T)
   ) %>% ungroup() %>%
@@ -470,6 +470,12 @@ contrasts(df.agg$dyad.type) = contr.sum(2)
 contrasts(df.agg$dyad.type)
 contrasts(df.agg$diagnosis) = contr.sum(2)
 contrasts(df.agg$diagnosis)
+contrasts(df.fix$sync) = contr.sum(2)
+contrasts(df.fix$sync)
+contrasts(df.fix$dyad.type) = contr.sum(2)
+contrasts(df.fix$dyad.type)
+contrasts(df.fix$diagnosis) = contr.sum(2)
+contrasts(df.fix$diagnosis)
 
 # print final group comparisons for the paper
 kable(df.table)
@@ -480,22 +486,23 @@ The two diagnostic groups are similar in age, concentration and speed (D2), colo
 
 ## Ratings 
 
+To achieve good posterior fit, we aggregated the rating data. First, we attempted to run a model including all main effects as slopes as well as the interaction of sync and dyad type for subjects. However, all models including random slopes had major divergence issues. Even the model only including only the intercepts on the group-level had some divergent transitions. Nonetheless, we opted to include both the intercept for the dyads and the subjects, and look out for problems with the actual model. 
+
 ### Model of aggregated ratings
 
 ```{r sbc_setup, fig.height=24}
 
-code = "PESI-agg"
-
 # set formula considering all combinations
+code   = "PESI_int"
 f.pesi = brms::bf(rating.confirmed ~ diagnosis * sync * dyad.type 
-                  + (sync + dyad.type | subID) )
+                  + (1 | subID) + (1 | dyad))
 
 # set weakly informed priors
 priors = c(
   prior(normal(50,  10), class = Intercept),
-  prior(normal(0,    5), class = sigma),
-  prior(normal(0,    5), class = sd),
-  prior(lkj(2),            class = cor),
+  prior(normal(0,   10), class = sigma),
+  prior(normal(0,   10), class = sd),
+  #prior(lkj(2),          class = cor),
   # differences due to dyad.type
   prior(normal(-5,   5), class = b, coef = dyad.type1), # mixed
   # differences due to synchrony
@@ -540,7 +547,7 @@ if (file.exists(file.path(cache_dir, paste0("df_res_", code, ".rds")))) {
 
 ```
 
-We start by investigating the rhats and the number of divergent samples. This shows that `r nrow(df.results %>% group_by(sim_id) %>% summarise(rhat = max(rhat, na.rm = T)) %>% filter(rhat >= 1.05))` of `r nsim` simulations had at least one parameter that had an rhat of at least 1.05, and `r nrow(df.backend %>% filter(n_divergent > 0))` models had divergent samples (mean number of samples of the simulations with divergent samples: `r as.numeric(df.backend %>% filter(n_divergent > 0) %>% summarise(n_divergent = round(mean(n_divergent), digits = 2)))`). This suggests that the model performs well. 
+We start by investigating the rhats and the number of divergent samples. This shows that `r nrow(df.results %>% group_by(sim_id) %>% summarise(rhat = max(rhat, na.rm = T)) %>% filter(rhat >= 1.05))` of `r nsim` simulations had at least one parameter that had an rhat of at least 1.05, and `r nrow(df.backend %>% filter(n_divergent > 0))` models had divergent samples (mean number of samples of the simulations with divergent samples: `r as.numeric(df.backend %>% filter(n_divergent > 0) %>% summarise(n_divergent = round(mean(n_divergent), digits = 2)))`). We will have to watch out for this. 
 
 Next, we can plot the simulated values to perform prior predictive checks. 
 
@@ -646,7 +653,7 @@ m.pesi = brm(f.pesi,
             df.agg, prior = priors,
             iter = iter, warmup = warm,
             backend = "cmdstanr", threads = threading(8),
-            file = "m_PESI_final",
+            file = "m_PESI",
             save_pars = save_pars(all = TRUE)
             )
 
@@ -777,25 +784,33 @@ h1.5
 
 ## Plots
 
-```{r plot, fig.height=6}
+```{r plot, fig.height=4}
 
 # rain cloud plot for ratings
 df.agg %>%
-  ggplot(aes(sync, rating.confirmed, fill = dyad.type, colour = dyad.type)) + #
-  geom_rain(rain.side = 'r',
-boxplot.args = list(color = "black", outlier.shape = NA, 
-                    show_guide = FALSE, alpha = 0.5),
-violin.args = list(color = "black", outlier.shape = NA, 
-                   alpha = 0.5),
-boxplot.args.pos = list(
-  position = ggpp::position_dodgenudge(x = 0, width = 0.3), width = 0.3
-),
-point.args = list(show_guide = FALSE, alpha = .5),
-violin.args.pos = list(
-  width = 0.6, position = position_nudge(x = 0.16)),
-point.args.pos = list(position = 
-                        ggpp::position_dodgenudge(x = -0.25, width = 0.1))) +
+  mutate(
+    dyad = as.factor(dyad)
+  ) %>%
+  ggplot(aes(dyad.type, rating.confirmed, fill = sync, 
+             colour = sync, fill = sync)) + 
+  geom_rain(rain.side = 'r', 
+            boxplot.args = list(colour = "black", 
+                                outlier.shape = NA, 
+                                show_guide = FALSE,
+                                alpha = 0.5),
+            violin.args  = list(colour = "black",
+                                outlier.shape = NA, 
+                                show_guide = FALSE,
+                                alpha = .5),
+            point.args   = list(show_guide = FALSE,
+                                alpha = .5),
+            boxplot.args.pos = list(
+              position = 
+                ggpp::position_dodgenudge(x = .1, width = 0.1), 
+              width = 0.1
+            )) +
   ylim(0, 100) +
+  facet_wrap(. ~ diagnosis) +
   scale_fill_manual(values = custom.col) +
   scale_color_manual(values = custom.col) +
   labs(title = "Mean confirmed ratings per subject", 
