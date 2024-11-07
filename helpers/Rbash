@@ -1,0 +1,8 @@
+#!/bin/bash
+
+while :
+do 
+
+	Rscript brms-SBC_fix-i.R
+	
+done
