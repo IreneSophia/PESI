@@ -10,6 +10,8 @@ rm(list=ls())
 fl.path = '/media/emba/emba-2/PESI'
 dt.path = paste(fl.path, 'BVET', sep = "/")
 
+# Fixations ---------------------------------------------------------------
+
 # radius of AOIs
 r_head = 60*1.75
 r_hand = 40*1.75
@@ -66,19 +68,6 @@ for (i in 1:length(ls.files)) {
   names(ls.bodyAOIs)[i] = gsub(".*AOIs/(.+)_body.csv", "\\1", ls.files[i])
 }
 
-# # get list of participants
-# df.sub = read_ods(file.path(fl.path, 'PESI_inc.ods')) %>%
-#   select(subID, include_ET) %>%
-#   filter(include_ET > 0)
-# 
-# # get all subjects
-# subIDs = unique(df.sub$subID)
-# 
-# # loop through subjects
-# for (subID in subIDs) {
-#   
-#   print(subID)
-
 # get the preprocessed fixation data
 df.fix = list.files(path = dt.path, pattern = "PESI.*_fixations.csv", full.names = T) %>%
   setNames(nm = .) %>%
@@ -91,7 +80,7 @@ df.fix = list.files(path = dt.path, pattern = "PESI.*_fixations.csv", full.names
 # get the original subIDs
 subIDs = unique(df.fix$subID)
 
-# start selecting relevant saccades
+# start selecting relevant fixations
 df.fix = df.fix %>%
   # only keep saccades within screen area
   filter(meanX_pix <= 1920 & meanY_pix <= 1080) %>%
@@ -162,7 +151,7 @@ df.fix.dur = df.fix %>%
     body  = sum(duration[on_bodyAOI == TRUE])
   ) %>% pivot_longer(cols = c(head, hand, body), values_to = "fix.dur", names_to = "AOI")
 
-df.fix.agg = df.fix %>% 
+df.fix = df.fix %>% 
   group_by(subID, on_trialVid, run, eye, on_trialNo) %>%
   summarise(
     n.total = n(),
@@ -172,5 +161,29 @@ df.fix.agg = df.fix %>%
   ) %>% pivot_longer(cols = c(head, hand, body), values_to = "count", names_to = "AOI") %>%
   merge(., df.fix.dur)
 
-# save all the data
-saveRDS(df.fix.agg, file.path(dt.path, "PESI-ET_agg.rds"))
+# save the data
+saveRDS(df.fix, file.path(dt.path, "PESI-ET_fix.rds"))
+
+# Saccades ----------------------------------------------------------------     
+
+# get the preprocessed fixation data
+df.sac = list.files(path = dt.path, pattern = "PESI.*_saccades.csv", full.names = T) %>%
+  setNames(nm = .) %>%
+  map_df(~read_csv(., show_col_types = F), .id = "fln") %>%
+  # get the subID from the filename 
+  mutate(
+    subID = gsub(".*PESI-ET-(.+)_saccades.csv", "\\1", fln)
+  ) %>%
+  # only keep saccades starting during trials
+  filter(!is.na(on_trialNo)) %>%
+  select(subID, on_trialNo, on_trialVid, run, eye)
+
+# aggregate the number of saccades
+df.sac.agg = df.sac %>%
+  group_by(subID, on_trialNo, on_trialVid) %>%
+  summarise(
+    n.sac = n()
+  )
+
+# save the data
+saveRDS(df.sac.agg, file.path(dt.path, "PESI-ET_sac.rds"))

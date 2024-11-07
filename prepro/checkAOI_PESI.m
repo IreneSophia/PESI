@@ -6,7 +6,7 @@ clearvars
 addpath('/home/emba/Documents/MATLAB/export_fig');
 
 % path to Deep Lab Cut output csvs
-dir_matAOI = '/media/emba/emba-2/PESI/AOIs/';
+dir_matAOI = '/media/emba/emba-2/PESI/PESI_scripts/AOIs/';
 
 % path to stimuli
 dir_in  = '/media/emba/emba-2/PESI/Stimuli/';
@@ -54,57 +54,57 @@ parfor (k = 1:length(vids), maxNumWorkers) %
         pline_x = r * cos(theta) + tbl.indiv1_midFace_x(i);
         pline_y = r * sin(theta) + tbl.indiv1_midFace_y(i);
         plot(pline_x, pline_y, 'r', 'LineWidth', 3);
-        text(50,30,...
-            sprintf('x %.0f y %.0f', tbl.indiv1_midFace_x(i),tbl.indiv1_midFace_y(i)),...
-            'Color','r');
+        % text(50,30,...
+        %     sprintf('x %.0f y %.0f', tbl.indiv1_midFace_x(i),tbl.indiv1_midFace_y(i)),...
+        %     'Color','r');
         % face right
         pline_x = r * cos(theta) + tbl.indiv2_midFace_x(i);
         pline_y = r * sin(theta) + tbl.indiv2_midFace_y(i);
         plot(pline_x, pline_y, 'b', 'LineWidth', 3);
-        text(150,30,...
-            sprintf('x %.0f y %.0f', tbl.indiv2_midFace_x(i),tbl.indiv2_midFace_y(i)),...
-            'Color','b');
+        % text(150,30,...
+        %     sprintf('x %.0f y %.0f', tbl.indiv2_midFace_x(i),tbl.indiv2_midFace_y(i)),...
+        %     'Color','b');
         % hands indiv1
         if ~iscell(tbl.indiv1_HandL_x) && ~iscell(tbl.indiv1_HandL_y)
             pline_x = r * s * cos(theta) + tbl.indiv1_HandL_x(i);
             pline_y = r * s * sin(theta) + tbl.indiv1_HandL_y(i);
             plot(pline_x, pline_y, 'g', 'LineWidth', 3);
-            text(250,30,...
-                sprintf('L: x %.0f y %.0f', tbl.indiv1_HandL_x(i),tbl.indiv1_HandL_y(i)),...
-                'Color','g');
+            % text(250,30,...
+            %     sprintf('L: x %.0f y %.0f', tbl.indiv1_HandL_x(i),tbl.indiv1_HandL_y(i)),...
+            %     'Color','g');
         end
         if ~iscell(tbl.indiv1_HandR_x) && ~iscell(tbl.indiv1_HandR_y)
             pline_x = r * s * cos(theta) + tbl.indiv1_HandR_x(i);
             pline_y = r * s * sin(theta) + tbl.indiv1_HandR_y(i);
             plot(pline_x, pline_y, 'y', 'LineWidth', 3);
-            text(350,30,...
-                sprintf('R: x %.0f y %.0f', tbl.indiv1_HandR_x(i),tbl.indiv1_HandR_y(i)),...
-                'Color','y');
+            % text(350,30,...
+            %     sprintf('R: x %.0f y %.0f', tbl.indiv1_HandR_x(i),tbl.indiv1_HandR_y(i)),...
+            %     'Color','y');
         end
         % hands indiv2
         if ~iscell(tbl.indiv2_HandL_x) && ~iscell(tbl.indiv2_HandL_y)
             pline_x = r * s * cos(theta) + tbl.indiv2_HandL_x(i);
             pline_y = r * s * sin(theta) + tbl.indiv2_HandL_y(i);
             plot(pline_x, pline_y, 'm', 'LineWidth', 3);
-            text(450,30,...
-                sprintf('L: x %.0f y %.0f', tbl.indiv2_HandL_x(i),tbl.indiv2_HandL_y(i)),...
-                'Color','m');
+            % text(450,30,...
+            %     sprintf('L: x %.0f y %.0f', tbl.indiv2_HandL_x(i),tbl.indiv2_HandL_y(i)),...
+            %     'Color','m');
         end
         if ~iscell(tbl.indiv2_HandR_x) && ~iscell(tbl.indiv2_HandR_y)
             pline_x = r * s * cos(theta) + tbl.indiv2_HandR_x(i);
             pline_y = r * s * sin(theta) + tbl.indiv2_HandR_y(i);
             plot(pline_x, pline_y, 'c', 'LineWidth', 3);
-            text(550, 30,...
-                sprintf('R: x %.0f y %.0f', tbl.indiv2_HandR_x(i),tbl.indiv2_HandR_y(i)),...
-                'Color','c');
+            % text(550, 30,...
+                % sprintf('R: x %.0f y %.0f', tbl.indiv2_HandR_x(i),tbl.indiv2_HandR_y(i)),...
+                % 'Color','c');
         end
         % add grid lines
-        yline(50:100:800,'--w');
-        yline(0:100:800,'w');
-        xline(50:100:800,'-.w');
-        xline(0:100:800,'w');
+        % yline(50:100:800,'--w');
+        % yline(0:100:800,'w');
+        % xline(50:100:800,'-.w');
+        % xline(0:100:800,'w');
         hold off;
-        export_fig(sprintf('%s%s%s_AOI_%03d.jpg', ...
+        export_fig(sprintf('%s%s%s_AOI_%03d_check_NEW.jpg', ...
             dir_out, filesep, vid_name, i-1));
         close all
     end
