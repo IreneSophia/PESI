@@ -2,3 +2,4 @@
 /_brms_SBC_cache/*_large.rds
 /*_rho.rds
 /AOIs/checkAOIs/*
+/_brms_LOO_cache/*
