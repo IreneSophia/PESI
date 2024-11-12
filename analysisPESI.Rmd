@@ -41,8 +41,12 @@ custom.col = c(c_dark_highlight, c_green, "#CC79A7", "#D55E00")
 use_cmdstanr = getOption("SBC.vignettes_cmdstanr", TRUE) # Set to false to use rst
 options(brms.backend = "cmdstanr")
 cache_dir = "./_brms_SBC_cache"
+loo_dir = "./_brms_LOO_cache"
 if(!dir.exists(cache_dir)) {
   dir.create(cache_dir)
+}
+if(!dir.exists(loo_dir)) {
+  dir.create(loo_dir)
 }
 
 # use parallel processing
@@ -61,7 +65,26 @@ plan(multisession)
 
 # Introduction
 
-[!ADD info on study and task]
+The PESI project focuses on "Perception of nonverbal social interaction in people with and without autism". Specifically, autistic and non-autistic adult participants watched 64 silent videos of dyadic conversations between two non-autistic or one autistic and one non-autistic adult. These videos were 10 seconds of longer conversations and either portrayed moments of high or low interpersonal synchrony of motion. The videos only showed outlines of the dyad to direct the focus on the movement. During the video presentation, participants' gaze is tracked and after each video they are asked to rate how comfortable they imagine this interaction to be. 
+
+We preregistered the following hypotheses:
+
+\begin{enumerate}
+  \item Ratings
+  \begin{enumerate}
+    \item Dyad type: Social interactions of no-diagnosis non-autistic dyads are rated more positively than mixed-diagnosis dyads consisting of one autistic and one non-autistic interaction partner. 
+    \item Synchrony: Social interactions with high interpersonal synchrony of motion energy are rated more positively than social interactions with low interpersonal synchrony of motion energy. 
+    \item Diagnostic status: Ratings of social interactions differ between autistic and non-autistic participants. 
+    \item Synchrony x dyad type: The effect of interpersonal motion synchrony on ratings is decreased for mixed-diagnosis dyads compared to no-diagnosis dyads. 
+    \item Dyad type x diagnostic status: The effect of dyad type on ratings is decreased in autistic compared to non-autistic participants.
+  \end{enumerate}
+  \item Fixation duration in areas of interest (AOI)
+  \begin{enumerate}
+    \item Dyad type x AOI: Fixation durations for each area of interest differ between clips of no-diagnosis and mixed-diagnosis dyads.
+    \item Synchrony x AOI: Fixation durations for each area of interest differ between high and low synchrony clips.
+    \item Diagnostic status x AOI: Fixation durations for each area of interest differ between autistic and non-autistic participants. 
+  \end{enumerate}
+\end{enumerate}
 
 ## Some general settings
 
@@ -230,18 +253,20 @@ if (!file.exists("PESI_data.RData")) {
   subIDs = unique(c(subIDs, df.fix$subID))
   subIDs = unique(c(subIDs, df.sac.agg$subID))
   
-  # anonymise ET data in the same way as the behavioural data
-  df.fix$subID     = str_replace_all(df.fix$subID, recode)
-  df.sac.agg$subID = str_replace_all(df.sac.agg$subID, recode)
-  
-  # get numbers of participants included in ET per group
-  df.incET = df.fix %>% 
-    select(subID, diagnosis) %>%
-    distinct() %>%
-    group_by(diagnosis) %>%
+  # get numbers of participants included in ET per group and gender identity
+  df.incET = merge(df.fix %>% 
+                     select(subID, diagnosis) %>% 
+                     distinct(),
+                   df.sub %>% select(subID, gender)
+                   ) %>%
+    group_by(diagnosis, gender) %>%
     summarise(
       n = n()
     )
+  
+  # anonymise ET data in the same way as the behavioural data
+  df.fix$subID     = str_replace_all(df.fix$subID, recode)
+  df.sac.agg$subID = str_replace_all(df.sac.agg$subID, recode)
   
   # remove participants not included in the behavioural or the eye tracking
   # analysis from the subjects data frame
@@ -421,25 +446,37 @@ if (!file.exists("PESI_data.RData")) {
                    c(
                      "PST - threshold",
                      sprintf("%.2f (±%.2f)", 
-                             mean(df.sub[df.sub$diagnosis == "ASD",]$thre), 
-                             sd(df.sub[df.sub$diagnosis == "ASD",]$thre)/
-                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
+                             mean(df.sub[df.sub$diagnosis == "ASD",]$thre, 
+                                  na.rm = T), 
+                             sd(df.sub[df.sub$diagnosis == "ASD",]$thre, 
+                                  na.rm = T)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD" &
+                                                  !is.na(df.sub$thre),]))),
                      sprintf("%.2f (±%.2f)", 
-                             mean(df.sub[df.sub$diagnosis == "COMP",]$thre), 
-                             sd(df.sub[df.sub$diagnosis == "COMP",]$thre)/
-                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
+                             mean(df.sub[df.sub$diagnosis == "COMP",]$thre, 
+                                  na.rm = T), 
+                             sd(df.sub[df.sub$diagnosis == "COMP",]$thre, 
+                                  na.rm = T)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP" &
+                                                  !is.na(df.sub$thre),]))),
                      sprintf("%.3f", ostt.thre@bayesFactor[["bf"]])
                    ),
                    c(
                      "PST - steepness",
                      sprintf("%.2f (±%.2f)", 
-                             mean(df.sub[df.sub$diagnosis == "ASD",]$steep), 
-                             sd(df.sub[df.sub$diagnosis == "ASD",]$steep)/
-                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD",]))),
+                             mean(df.sub[df.sub$diagnosis == "ASD",]$steep, 
+                                  na.rm = T), 
+                             sd(df.sub[df.sub$diagnosis == "ASD",]$steep, 
+                                  na.rm = T)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD" &
+                                                  !is.na(df.sub$steep),]))),
                      sprintf("%.2f (±%.2f)", 
-                             mean(df.sub[df.sub$diagnosis == "COMP",]$steep), 
-                             sd(df.sub[df.sub$diagnosis == "COMP",]$steep)/
-                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
+                             mean(df.sub[df.sub$diagnosis == "COMP",]$steep, 
+                                  na.rm = T), 
+                             sd(df.sub[df.sub$diagnosis == "COMP",]$steep, 
+                                  na.rm = T)/
+                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP" &
+                                                  !is.na(df.sub$steep),]))),
                      sprintf("%.3f", ostt.steep@bayesFactor[["bf"]])
                    )
                 ) %>% arrange(measurement)
@@ -523,11 +560,13 @@ kable(df.table)
 
 ```
 
-The two diagnostic groups are similar in age, concentration and speed (D2), colorblindness score (Ishihara), IQ and gender distribution as well as on a perceptual simultaneity task (PST). However, they seem to differ in their questionnaire scores measuring depressive symptoms (BDI), autism (RAADS), trait anxiety (STAI-trait) and intolerance of uncertainty (UI). 
+The two diagnostic groups are similar in age, concentration and speed (D2), colorblindness score (Ishihara), IQ and gender distribution as well as on a perceptual simultaneity task (PST). However, they seem to differ in their questionnaire scores measuring depressive symptoms (BDI), autism-like traits (RAADS), trait anxiety (STAI-trait) and intolerance of uncertainty (UI). 
 
 # Hypothesis-guided analysis
 
 ## Aggregated ratings 
+
+After each video, participants were asked to rate the interaction on a continuous scale for "How comfortable to you imagine this interaction to be?" (from 0 "not at all" to 100 "very"). 
 
 ### SBC
 
@@ -633,9 +672,9 @@ ggplot(data = quantmat, aes(x = x)) +
 
 ```
 
-[!ADD]
+The above figure shows the simulated data for the ratings. The data is centered around the middle of the rating scale. We had some outliers that were outside of the possible values (greater than 100 or smaller than 0), however, to keep our prior somewhat wide we chose to accept this in the simulated data. 
 
-```{r sbc_checks2, fig.height=12}
+```{r sbc_checks2, fig.height=15}
 
 # get simulation numbers with issues
 rank = max(df.results$max_rank)
@@ -663,7 +702,7 @@ p3 = plot_sim_estimated(df.results.b, alpha = 0.5) + theme_bw() +
   scale_y_continuous(breaks=scales::pretty_breaks(n = 3))
 p4 = plot_contraction(
   df.results.b, 
-  prior_sd = setNames(c(10, 
+  prior_sd = setNames(c(10, # Intercept
                         rep(5, length(unique(df.results.b$variable))-1)), 
                       unique(df.results.b$variable))) +
   theme_bw() +
@@ -685,9 +724,9 @@ Last, we explore the z-score and the posterior contraction of our population-lev
 
 ### Posterior predictive checks
 
-As the next step, we fit the model and check whether the chains have converged, which they seem to have. We then perform posterior predictive checks on the model using the bayesplot package.
+As the next step, we fit the model and check whether there were any obvious issues with it. 
 
-```{r postpc, fig.height = 12}
+```{r postpc, fig.height = 9}
 
 # fit the model
 set.seed(2486)
@@ -743,7 +782,7 @@ annotate_figure(p,
 
 ```
 
-The predictions based on the model capture the data very well. The means for each group are firmly distributed around the real values. This further increased our trust in the model and we move on to interpret it.
+The predictions based on the model (light blue) capture the data (dark blue) very well. The predicted means for each group are firmly distributed around the real values. This further increased our trust in the model and we move on to interpret it.
 
 ### Model summary
 
@@ -790,54 +829,59 @@ post.draws %>%
 
 ```
 
-
 ### Inferences
 
 ```{r inf}
 
-# H1.1 Context: Social interactions of no-diagnosis non-autistic dyads are 
+# H1.a Context: Social interactions of no-diagnosis non-autistic dyads are 
 # rated more positively than mixed-diagnosis dyads consisting of one autistic 
 # and one non-autistic interaction partner. 
-h1.1 = hypothesis(m.pesi, "dyad.type1 < 0")
-h1.1
+h1.a = hypothesis(m.pesi, "dyad.type1 < 0")
+h1.a
 
-# H1.2 Synchrony: Social interactions with high interpersonal synchrony of 
+# H1.b Synchrony: Social interactions with high interpersonal synchrony of 
 # motion energy are rated more positively than social interactions with low 
 # interpersonal synchrony of motion energy. 
-h1.2 = hypothesis(m.pesi, "sync1 > 0")
-h1.2 
+h1.b = hypothesis(m.pesi, "sync1 > 0")
+h1.b 
 
-# H1.3 Diagnostic status: Ratings of social interactions differ between 
+# H1.c Diagnostic status: Ratings of social interactions differ between 
 # autistic and non-autistic participants. 
-h1.3 = hypothesis(m.pesi, "diagnosis1 > 0")
-h1.3
+h1.c = hypothesis(m.pesi, "diagnosis1 > 0")
+h1.c
 
-# H1.4 Synchrony x dyad type: The effect of interpersonal motion synchrony 
+# H1.d Synchrony x dyad type: The effect of interpersonal motion synchrony 
 # on ratings is decreased for mixed-diagnosis dyads compared to no-diagnosis dyads. 
-h1.4 = hypothesis(m.pesi, "sync1:dyad.type1 < 0")
-h1.4
+h1.d = hypothesis(m.pesi, "sync1:dyad.type1 < 0")
+h1.d
 
-# H1.5 Dyad type x diagnostic status: The effect of dyad type on ratings is 
+# H1.e Dyad type x diagnostic status: The effect of dyad type on ratings is 
 # decreased in autistic compared to non-autistic participants.
-h1.5 = hypothesis(m.pesi, "diagnosis1:dyad.type1 < 0")
-h1.5
+h1.e = hypothesis(m.pesi, "diagnosis1:dyad.type1 < 0")
+h1.e
 
-# Explore the other interactions
-e1.1 = hypothesis(m.pesi, "diagnosis1:sync1 < 0")
-e1.1
-e1.2 = hypothesis(m.pesi, "diagnosis1:sync1:dyad.type1 > 0")
-e1.2
+# Explore interaction between sync and dyad type in the COMP group only
+e1 = hypothesis(m.pesi, 
+                "0 < diagnosis1:sync1:dyad.type1 - sync1:dyad.type1", 
+                alpha = 0.025)
+e1
 
 ```
 
+Our Bayesian linear mixed model evaluating predictors for the ratings reveals support for our hypotheses postulating decreased ratings for mixed dyads (*Estimate* = `r round(h1.a$hypothesis$Estimate,2)` [`r round(h1.a$hypothesis$CI.Lower,2)`, `r round(h1.a$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h1.a$hypothesis$Post.Prob,3)`) and increased ratings for high synchrony videos (*Estimate* = `r round(h1.b$hypothesis$Estimate,2)` [`r round(h1.b$hypothesis$CI.Lower,2)`, `r round(h1.b$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h1.b$hypothesis$Post.Prob,3)`). However, there is no support for our hypotheses regarding differences between the ratings of autistic and non-autistic participants (*Estimate* = `r round(h1.c$hypothesis$Estimate,2)` [`r round(h1.c$hypothesis$CI.Lower,2)`, `r round(h1.c$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h1.c$hypothesis$Post.Prob,3)`) or the interaction of synchrony and dyad type (*Estimate* = `r round(h1.d$hypothesis$Estimate,2)` [`r round(h1.d$hypothesis$CI.Lower,2)`, `r round(h1.d$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h1.d$hypothesis$Post.Prob,3)`) or dyad type and diagnostic status (*Estimate* = `r round(h1.e$hypothesis$Estimate,2)` [`r round(h1.e$hypothesis$CI.Lower,2)`, `r round(h1.e$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h1.e$hypothesis$Post.Prob,3)`). 
+
+
 ### Plots
+
+Finally, we can plot our data!
 
 ```{r plot, fig.height=4}
 
 # rain cloud plot for ratings
 df.agg %>%
-  mutate(
-    dyad = as.factor(dyad)
+  group_by(subID, diagnosis, dyad.type, sync) %>%
+  summarise(
+    rating.confirmed = mean(rating.confirmed, na.rm = T)
   ) %>%
   ggplot(aes(dyad.type, rating.confirmed, fill = sync, colour = sync)) + 
   geom_rain(rain.side = 'r', 
@@ -850,6 +894,7 @@ df.agg %>%
                                 show.legend = T,
                                 alpha = .5),
             point.args   = list(show.legend = FALSE,
+                                size  = .75, 
                                 alpha = .5),
             boxplot.args.pos = list(
               position = 
@@ -873,7 +918,58 @@ df.agg %>%
 
 ### LOO?
 
+```{r loo_comparison, eval=F}
+
+# intercept model
+m.pesi0 = brm(rating.confirmed ~ 1 + (1 | subID) + (1 | dyad), 
+              data = df.agg, prior = priors %>% filter(class != "b"),
+              iter = iter, warmup = warm,
+              backend = "cmdstanr", threads = threading(8),
+              file = file.path(loo_dir, "m_PESI_0"),
+              save_pars = save_pars(all = TRUE)
+)
+# main effect models
+m.pesi1 = brm(rating.confirmed ~ diagnosis + (1 | subID) + (1 | dyad), 
+              data = df.agg, prior = priors %>% 
+                filter(class != "b"),
+              iter = iter, warmup = warm,
+              backend = "cmdstanr", threads = threading(8),
+              file = file.path(loo_dir, "m_PESI_1"),
+              save_pars = save_pars(all = TRUE)
+)
+m.pesi2 = brm(rating.confirmed ~ dyad.type + (1 | subID) + (1 | dyad), 
+              data = df.agg, prior = priors %>% 
+                filter(class != "b" | coef == "dyad.type1"),
+              iter = iter, warmup = warm,
+              backend = "cmdstanr", threads = threading(8),
+              file = file.path(loo_dir, "m_PESI_2"),
+              save_pars = save_pars(all = TRUE)
+)
+m.pesi3 = brm(rating.confirmed ~ sync + (1 | subID) + (1 | dyad), 
+              data = df.agg, prior = priors %>% 
+                filter(class != "b" | coef == "sync1"),
+              iter = iter, warmup = warm,
+              backend = "cmdstanr", threads = threading(8),
+              file = file.path(loo_dir, "m_PESI_3"),
+              save_pars = save_pars(all = TRUE)
+)
+
+# calculate the loos for these models
+ls.loo = list(
+  loo(m.pesi0),
+  loo(m.pesi1),
+  loo(m.pesi2),
+  loo(m.pesi3)
+)
+
+loo_compare(ls.loo)
+
+
+```
+
 ## Fixation durations
+
+We also collected eye tracking data during the presentation of the videos. From the eye tracking data, we extracted fixations using the algorithm from Nyström und Holmqvist (2010) and then calculated the duration of fixations on areas of interest (heads, hands and body). For testing the hypotheses, we calculated proportions of fixation durations from the total fixation duration for each video.  
 
 ### SBC
 
@@ -928,7 +1024,7 @@ if (file.exists(file.path(cache_dir, paste0("df_res_", code, ".rds")))) {
 ```
 
 
-Again, we start by investigating the rhats and the number of divergent samples. This shows that `r nrow(df.results %>% group_by(sim_id) %>% summarise(rhat = max(rhat, na.rm = T)) %>% filter(rhat >= 1.05))` of `r nsim` simulations had at least one parameter that had an rhat of at least 1.05, and `r nrow(df.backend %>% filter(n_divergent > 0))` models had divergent samples (mean number of samples of the simulations with divergent samples: `r as.numeric(df.backend %>% filter(n_divergent > 0) %>% summarise(n_divergent = round(mean(n_divergent), digits = 2)))`). [!ADD]
+Again, we start by investigating the rhats and the number of divergent samples. This shows that `r nrow(df.results %>% group_by(sim_id) %>% summarise(rhat = max(rhat, na.rm = T)) %>% filter(rhat >= 1.05))` of `r nsim` simulations had at least one parameter that had an rhat of at least 1.05, and `r nrow(df.backend %>% filter(n_divergent > 0))` models had divergent samples (mean number of samples of the simulations with divergent samples: `r as.numeric(df.backend %>% filter(n_divergent > 0) %>% summarise(n_divergent = round(mean(n_divergent), digits = 2)))`). Although not perfect, we are satisfied with these numbers and continue. 
 
 Next, we can plot the simulated values to perform prior predictive checks. 
 
@@ -972,6 +1068,7 @@ ggplot(data = quantmat, aes(x = x)) +
 
 ```
 
+Again, most of our data fits our expectations, however, we chose wider priors, therefore, there are also simulated values outside of the possible values (0 to 100). 
 
 ```{r sbc_checks2_fix, fig.height=24}
 
@@ -1023,7 +1120,7 @@ Last, we explore the z-score and the posterior contraction of our population-lev
 
 ### Posterior predictive checks
 
-As the next step, we fit the model and check whether the chains have converged, which they seem to have. We then perform posterior predictive checks on the model using the bayesplot package.
+As the next step, we fit the model and check for issues. 
 
 ```{r postpc_fix, fig.height = 24}
 
@@ -1033,8 +1130,7 @@ m.fix = brm(f.fix,
             df.fix.agg, prior = priors,
             iter = iter, warmup = warm,
             backend = "cmdstanr", threads = threading(8),
-            file = "m_PESI_fix",
-            save_pars = save_pars(all = TRUE)
+            file = "m_PESI_fix"
             )
 
 # in this model, there are no divergent samples
@@ -1052,7 +1148,7 @@ mcmc_trace(post.draws, regex_pars = "^b_",
 
 ```
 
-This model has no divergent samples, and no rhat that is higher or equal to 1.01. Therefore, we go ahead and perform our posterior predictive checks. 
+This model has no divergent samples, and only one rhat that is higher or equal to 1.01. Therefore, we go ahead and perform our posterior predictive checks. 
 
 ```{r postpc2_fix, fig.height=6}
 
@@ -1137,39 +1233,46 @@ post.draws %>%
 
 ```{r inf_fix}
 
-# H2.1 Dyad type x AOI: Fixation durations for each area of interest differ
+# H2.a Dyad type x AOI: Fixation durations for each area of interest differ
 # between clips of no-diagnosis and mixed-diagnosis dyads.
-h2.1 = hypothesis(m.fix, "(dyad.type1:AOI1 + dyad.type1:AOI2)/2 < 0", alpha = 0.025)
-h2.1
+h2.a = hypothesis(m.fix, "(dyad.type1:AOI1 + dyad.type1:AOI2)/2 < 0", alpha = 0.025)
+h2.a
 
-# H2.1 Synchrony x AOI: Fixation durations for each AOI differ between 
+# H2.b Synchrony x AOI: Fixation durations for each AOI differ between 
 # high- and low-synchrony clips. 
-h2.2 = hypothesis(m.fix, "(sync1:AOI1 + sync1:AOI2)/2 > 0", alpha = 0.025)
-h2.2 
+h2.b = hypothesis(m.fix, "(sync1:AOI1 + sync1:AOI2)/2 > 0", alpha = 0.025)
+h2.b 
 
-# H2.3 Diagnostic status x AOI: Fixation durations for each AOI differ between 
+# H2.c Diagnostic status x AOI: Fixation durations for each AOI differ between 
 # autistic and non-autistic participants
-h2.3 = hypothesis(m.fix, "(diagnosis1:AOI1 + diagnosis1:AOI2)/2 < 0", alpha = 0.025)
-h2.3
+h2.c = hypothesis(m.fix, "(diagnosis1:AOI1 + diagnosis1:AOI2)/2 < 0", alpha = 0.025)
+h2.c
 
 # exploring which AOI is driving this...
-e2.1 = hypothesis(m.fix, "diagnosis1:AOI1 < 0", alpha = 0.025)
-e2.1
-e2.2 = hypothesis(m.fix, "diagnosis1:AOI2 < 0", alpha = 0.025)
-e2.2
-e2.3 = hypothesis(m.fix, "-diagnosis1:AOI1 -diagnosis1:AOI2 > 0", alpha = 0.025)
-e2.3
+e1 = hypothesis(m.fix, "diagnosis1:AOI1 < 0", alpha = 0.025)
+e1
+e2 = hypothesis(m.fix, "diagnosis1:AOI2 < 0", alpha = 0.025)
+e2
+e3 = hypothesis(m.fix, "-diagnosis1:AOI1 -diagnosis1:AOI2 > 0", alpha = 0.025)
+e3
 
 ```
 
+Our second Bayesian linear mixed model evaluating predictors for the proportional dwell times reveals support for our expectation of differences between autistic and non-autistic participants dependent on the specific AOI (*Estimate* = `r round(h2.c$hypothesis$Estimate,2)` [`r round(h2.c$hypothesis$CI.Lower,2)`, `r round(h2.c$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h2.c$hypothesis$Post.Prob,3)`). Further exploration shows that this is driven by reduced dwell times on the head region (*Estimate* = `r round(e1$hypothesis$Estimate,2)` [`r round(e1$hypothesis$CI.Lower,2)`, `r round(e1$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(e1$hypothesis$Post.Prob,3)`) and increased dwell times on the body region (*Estimate* = `r round(e3$hypothesis$Estimate,2)` [`r round(e3$hypothesis$CI.Lower,2)`, `r round(e3$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(e3$hypothesis$Post.Prob,3)`) for autistic participants. 
+
+There is no support for our hypotheses regarding interactions between synchrony and AOI (*Estimate* = `r round(h2.b$hypothesis$Estimate,2)` [`r round(h2.b$hypothesis$CI.Lower,2)`, `r round(h2.b$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h2.b$hypothesis$Post.Prob,3)`) or dyad type and AOI (*Estimate* = `r round(h2.a$hypothesis$Estimate,2)` [`r round(h2.a$hypothesis$CI.Lower,2)`, `r round(h2.a$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h2.a$hypothesis$Post.Prob,3)`). 
+
 ### Plots
 
-```{r plot_fix, fig.height=4}
+At the end, we again plot our data. 
+
+```{r plot_fix, fig.height=8}
 
 # rain cloud plot for fixation durations
 df.fix.agg %>%
-  mutate(
-    dyad = as.factor(dyad)
+  group_by(subID, diagnosis, sync, dyad.type, AOI) %>%
+  summarise(
+    fix.prop = mean(fix.prop, na.rm = T)
   ) %>%
   ggplot(aes(AOI, fix.prop, fill = sync, colour = sync)) + 
   geom_rain(rain.side = 'r', 
@@ -1182,6 +1285,7 @@ df.fix.agg %>%
                                 show.legend = T,
                                 alpha = .5),
             point.args   = list(show.legend = FALSE,
+                                size  = 0.75,
                                 alpha = .5),
             boxplot.args.pos = list(
               position = 
@@ -1201,10 +1305,17 @@ df.fix.agg %>%
         legend.direction = "horizontal", 
         text = element_text(size = 15))
 
+```
+
+Additionally, we focus on specific interactions. 
+
+```{r plot_fix2, fig.height=4}
+
 # rain cloud plot for fixation durations, focusing on synchrony x AOI
 df.fix.agg %>%
-  mutate(
-    dyad = as.factor(dyad)
+  group_by(subID, diagnosis, sync, AOI) %>%
+  summarise(
+    fix.prop = mean(fix.prop, na.rm = T)
   ) %>%
   ggplot(aes(AOI, fix.prop, fill = sync, colour = sync)) + 
   geom_rain(rain.side = 'r', 
@@ -1237,8 +1348,9 @@ df.fix.agg %>%
 
 # rain cloud plot for fixation durations, focusing on dyad type x AOI
 df.fix.agg %>%
-  mutate(
-    dyad = as.factor(dyad)
+  group_by(subID, diagnosis, dyad.type, AOI) %>%
+  summarise(
+    fix.prop = mean(fix.prop, na.rm = T)
   ) %>%
   ggplot(aes(AOI, fix.prop, fill = dyad.type, colour = dyad.type)) + 
   geom_rain(rain.side = 'r', 
@@ -1271,8 +1383,9 @@ df.fix.agg %>%
 
 # rain cloud plot for fixation durations, focusing on diagnostic status x AOI
 df.fix.agg %>%
-  mutate(
-    dyad = as.factor(dyad)
+  group_by(subID, diagnosis, AOI) %>%
+  summarise(
+    fix.prop = mean(fix.prop, na.rm = T)
   ) %>%
   ggplot(aes(AOI, fix.prop, fill = diagnosis, colour = diagnosis)) + 
   geom_rain(rain.side = 'r', 
@@ -1307,7 +1420,11 @@ df.fix.agg %>%
 
 # Explorative analyses
 
+We complement our hypotheses-guided analyses with some exploration of the data. 
+
 ## Number of saccades
+
+First, we use the saccades extracted by the Nyström and Holmqvist (2010) algorithm to explore whether there are differences in saccadic behaviour between our groups or the conditions. 
 
 ### SBC
 
@@ -1364,6 +1481,10 @@ if (file.exists(file.path(cache_dir, paste0("df_res_", code, ".rds")))) {
 
 ```
 
+Again, we start by investigating the rhats and the number of divergent samples. This shows that `r nrow(df.results %>% group_by(sim_id) %>% summarise(rhat = max(rhat, na.rm = T)) %>% filter(rhat >= 1.05))` of `r nsim` simulations had at least one parameter that had an rhat of at least 1.05, and `r nrow(df.backend %>% filter(n_divergent > 0))` models had divergent samples (mean number of samples of the simulations with divergent samples: `r as.numeric(df.backend %>% filter(n_divergent > 0) %>% summarise(n_divergent = round(mean(n_divergent), digits = 2)))`). We will have to look out for divergence issues in the final model. 
+
+Next, we can plot the simulated values to perform prior predictive checks. 
+
 ```{r sbc_checks1_sac, fig.height=4}
 
 # create a matrix out of generated data
@@ -1404,7 +1525,9 @@ p1
 
 ```
 
-```{r sbc_checks2_sac, fig.height=12}
+Our simulated data centres around participants only producing a couple of saccades per video, which is reasonable since the videos are only 10 seconds long. However, there is some data simulated that shows up to 50 saccades, so it is reasonably wide and we are happy with the prior predictive distribution. 
+
+```{r sbc_checks2_sac, fig.height=9}
 
 # get simulation numbers with issues
 rank = max(df.results$max_rank)
@@ -1446,17 +1569,13 @@ annotate_figure(p,
 
 ```
 
-Second, we check the ranks of the parameters. If the model is unbiased, these should be uniformly distributed (Schad, Betancourt and Vasishth, 2020). The sample empirical cumulative distribution function (ECDF) lies within the theoretical distribution (95%) and the rank histogram also shows ranks within the 95% expected range, although there are some small deviations. We judge this to be acceptable.
-
-Third, we investigated the relationship between the simulated true parameters and the posterior estimates. Although there are individual values diverging from the expected pattern, most parameters were recovered successfully within an uncertainty interval of alpha = 0.05. 
-
-Last, we explore the z-score and the posterior contraction of our population-level predictors. The z-score "determines the distance of the posterior mean from the true simulating parameter", while the posterior contraction "estimates how much prior uncertainty is reduced in the posterior estimation" (Schad, Betancourt and Vasisth, 2020). Both look acceptable. 
+Second, we check the outcome of the SBC. All looks acceptable. 
 
 ### Posterior predictive checks
 
-As the next step, we fit the model and check whether the chains have converged, which they seem to have. We then perform posterior predictive checks on the model using the bayesplot package.
+As the next step, we fit the model and check for issues. 
 
-```{r postpc_sac, fig.height = 12}
+```{r postpc_sac, fig.height=9}
 
 # fit the model
 set.seed(2496)
@@ -1517,7 +1636,7 @@ Although the overall shape is not perfect, the means are captured pretty well. S
 
 ### Model summary
 
-Now that we are convinced that we can trust our model, we have a look at the model and its estimates.
+Now, we have a look at the model and its estimates.
 
 ```{r final_sac, fig.height=6}
 
@@ -1560,7 +1679,11 @@ post.draws %>%
 
 ```
 
+While autistic participants seem to have produced fewer saccades on average, this was independent of the conditions. Additionally, there seem to be no differences associated with the task conditions itself. 
+
 ## Predicting ratings by gaze behaviour
+
+We also want to see whether across groups gaze behaviour predicted ratings, i.e., focus on specific AOIs led to increased ratings. 
 
 ### SBC
 
@@ -1580,6 +1703,7 @@ df.com = df.fix %>%
     n.sac = mean(n.sac),
     rating.confirmed = mean(rating.confirmed, na.rm = T)
   ) %>% ungroup() %>%
+  # scale the predictors
   mutate(
     sn.sac = scale(n.sac),
     s.head = scale(head),
@@ -1589,7 +1713,8 @@ df.com = df.fix %>%
 
 # set formula
 code   = "PESI_com"
-f.com = brms::bf(rating.confirmed ~ sn.sac + s.head + s.hand + s.body + (1 | subID) + (1 | dyad))
+f.com = brms::bf(rating.confirmed ~ sn.sac + s.head + s.hand + s.body + 
+                   (1 | subID) + (1 | dyad))
 
 # set weakly informed priors
 priors = c(
@@ -1630,6 +1755,10 @@ if (file.exists(file.path(cache_dir, paste0("df_res_", code, ".rds")))) {
 }
 
 ```
+
+Again, we start by investigating the rhats and the number of divergent samples. This shows that `r nrow(df.results %>% group_by(sim_id) %>% summarise(rhat = max(rhat, na.rm = T)) %>% filter(rhat >= 1.05))` of `r nsim` simulations had at least one parameter that had an rhat of at least 1.05, and `r nrow(df.backend %>% filter(n_divergent > 0))` models had divergent samples (mean number of samples of the simulations with divergent samples: `r as.numeric(df.backend %>% filter(n_divergent > 0) %>% summarise(n_divergent = round(mean(n_divergent), digits = 2)))`). Again, we will look out for divergence issues in the final model. 
+
+Next, we can plot the simulated values to perform prior predictive checks. 
 
 ```{r sbc_checks1_com, fig.height=4}
 
@@ -1672,7 +1801,9 @@ p1
 
 ```
 
-```{r sbc_checks2_com, fig.height=12}
+The overall shape again looks acceptable, even though there are some impossible simulated values. 
+
+```{r sbc_checks2_com, fig.height=9}
 
 # get simulation numbers with issues
 rank = max(df.results$max_rank)
@@ -1714,15 +1845,11 @@ annotate_figure(p,
 
 ```
 
-Second, we check the ranks of the parameters. If the model is unbiased, these should be uniformly distributed (Schad, Betancourt and Vasishth, 2020). The sample empirical cumulative distribution function (ECDF) lies within the theoretical distribution (95%) and the rank histogram also shows ranks within the 95% expected range, although there are some small deviations. We judge this to be acceptable.
-
-Third, we investigated the relationship between the simulated true parameters and the posterior estimates. Although there are individual values diverging from the expected pattern, most parameters were recovered successfully within an uncertainty interval of alpha = 0.05. 
-
-Last, we explore the z-score and the posterior contraction of our population-level predictors. The z-score "determines the distance of the posterior mean from the true simulating parameter", while the posterior contraction "estimates how much prior uncertainty is reduced in the posterior estimation" (Schad, Betancourt and Vasisth, 2020). Both look acceptable. 
+Second, we check the outcome of the SBC. All looks acceptable. 
 
 ### Posterior predictive checks
 
-As the next step, we fit the model and check whether the chains have converged, which they seem to have. We then perform posterior predictive checks on the model using the bayesplot package.
+As the next step, we fit the model and check for issues. 
 
 ```{r postpc_com}
 
@@ -1769,11 +1896,11 @@ annotate_figure(p1,
 
 ```
 
-Although the overall shape is not perfect, the means are captured pretty well. Since we could not find a likelihood shape that fit better than this, we accept this model and test our hypotheses. 
+The predicted values in light blue fit the actual values in dark blue quite well. 
 
 ### Model summary
 
-Now that we are convinced that we can trust our model, we have a look at the model and its estimates.
+Now, we have a look at the model and its estimates.
 
 ```{r final_com, fig.height=6}
 
@@ -1806,82 +1933,4 @@ post.draws %>%
 
 ```
 
-## Synchronisation of autistic and non-autistic participants in the mixed dyads
-
-```{r setup_syncronisation}
-
-# we focus on the mixed dyads to compare the influence of synchronisation / leading
-# s1 is left, s2 is the right person, we recode this to diagnostic status
-df.lead = df %>%
-  filter(dyad.type == "mixed") %>%
-  mutate(
-    ASDpeak = case_when(
-      dyad == "D22g" ~ s2peak, 
-      dyad == "D24g" ~ s2peak, 
-      dyad == "D25g" ~ s1peak, 
-      dyad == "D27g" ~ s1peak
-    ),
-    COMpeak = case_when(
-      dyad == "D22g" ~ s1peak, 
-      dyad == "D24g" ~ s1peak, 
-      dyad == "D25g" ~ s2peak, 
-      dyad == "D27g" ~ s2peak
-    )
-  ) %>% drop_na()
-
-# run spearman correlations for ASDpeaks and COMpeaks: https://osf.io/j5wud
-source("./helpers/rankBasedCommonFunctions.R")
-source("./helpers/spearmanSampler.R")
-
-# Default beta prior width is set to a = b = 1 for the sampler 
-if (file.exists("ASD_rho.rds")) {
-  rhoSamples.asd = readRDS("ASD_rho.rds")
-} else {
-  rhoSamples.asd = 
-    spearmanGibbsSampler(xVals = df.lead$rating.confirmed,
-                         yVals = df.lead$ASDpeak, 
-                         nSamples = 5e3)
-  saveRDS(rhoSamples.asd, file = "ASD_rho.rds")
-}
-
-# give the posterior samples for rho to the function below to compute BF01
-asdcor.bf = computeBayesFactorOneZero(rhoSamples.asd$rhoSamples, 
-                          whichTest = "Spearman",
-                          priorParameter = 1)
-log(asdcor.bf)
-
-# visualise it
-ggplot(data = df.lead, aes(x = rating.confirmed, y = ASDpeak)) +
-  geom_point(colour = "lightblue") +
-  geom_smooth(method = "lm", 
-              formula = y ~ x, 
-              geom = "smooth", colour = c_mid_highlight) +
-  theme_bw() 
-
-# Default beta prior width is set to a = b = 1 for the sampler 
-if (file.exists("COM_rho.rds")) {
-  rhoSamples.com = readRDS("COM_rho.rds")
-} else {
-  rhoSamples.com = 
-    spearmanGibbsSampler(xVals = df.lead$rating.confirmed,
-                         yVals = df.lead$COMpeak, 
-                         nSamples = 5e3)
-  saveRDS(rhoSamples.com, file = "COM_rho.rds")
-}
-
-# give the posterior samples for rho to the function below to compute BF01
-comcor.bf = computeBayesFactorOneZero(rhoSamples.com$rhoSamples, 
-                          whichTest = "Spearman",
-                          priorParameter = 1)
-log(comcor.bf)
-
-# visualise it
-ggplot(data = df.lead, aes(x = rating.confirmed, y = COMpeak)) +
-  geom_point(colour = "lightblue") +
-  geom_smooth(method = "lm", 
-              formula = y ~ x, 
-              geom = "smooth", colour = c_mid_highlight) +
-  theme_bw() 
-
-
-```
+It seems as if decreased dwell times on the hands was associated with increased ratings. 
