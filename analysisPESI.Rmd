@@ -45,13 +45,13 @@ loo_dir = "./_brms_LOO_cache"
 if(!dir.exists(cache_dir)) {
   dir.create(cache_dir)
 }
-if(!dir.exists(loo_dir)) {
-  dir.create(loo_dir)
-}
 
 # use parallel processing
 library(future)
 plan(multisession)
+
+# get the functions to perform loo (leave-one-out cross-validation)
+source("./helpers/fun_loo.R")
 
 ```
 
@@ -913,57 +913,6 @@ df.agg %>%
         plot.title = element_text(hjust = 0.5), 
         legend.direction = "horizontal", 
         text = element_text(size = 15))
-
-```
-
-### LOO?
-
-```{r loo_comparison, eval=F}
-
-# intercept model
-m.pesi0 = brm(rating.confirmed ~ 1 + (1 | subID) + (1 | dyad), 
-              data = df.agg, prior = priors %>% filter(class != "b"),
-              iter = iter, warmup = warm,
-              backend = "cmdstanr", threads = threading(8),
-              file = file.path(loo_dir, "m_PESI_0"),
-              save_pars = save_pars(all = TRUE)
-)
-# main effect models
-m.pesi1 = brm(rating.confirmed ~ diagnosis + (1 | subID) + (1 | dyad), 
-              data = df.agg, prior = priors %>% 
-                filter(class != "b"),
-              iter = iter, warmup = warm,
-              backend = "cmdstanr", threads = threading(8),
-              file = file.path(loo_dir, "m_PESI_1"),
-              save_pars = save_pars(all = TRUE)
-)
-m.pesi2 = brm(rating.confirmed ~ dyad.type + (1 | subID) + (1 | dyad), 
-              data = df.agg, prior = priors %>% 
-                filter(class != "b" | coef == "dyad.type1"),
-              iter = iter, warmup = warm,
-              backend = "cmdstanr", threads = threading(8),
-              file = file.path(loo_dir, "m_PESI_2"),
-              save_pars = save_pars(all = TRUE)
-)
-m.pesi3 = brm(rating.confirmed ~ sync + (1 | subID) + (1 | dyad), 
-              data = df.agg, prior = priors %>% 
-                filter(class != "b" | coef == "sync1"),
-              iter = iter, warmup = warm,
-              backend = "cmdstanr", threads = threading(8),
-              file = file.path(loo_dir, "m_PESI_3"),
-              save_pars = save_pars(all = TRUE)
-)
-
-# calculate the loos for these models
-ls.loo = list(
-  loo(m.pesi0),
-  loo(m.pesi1),
-  loo(m.pesi2),
-  loo(m.pesi3)
-)
-
-loo_compare(ls.loo)
-
 
 ```
 
