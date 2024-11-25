@@ -42,9 +42,9 @@ df.AOIs = list.files(path = './AOIs', pattern = "PESI.*0.csv", full.names = T) %
   ) %>%
   # only keep relevant columns for the AOIs
   select(on_trialVid, on_trialPic, 
-         indiv1.Face_x, indiv1.Face_y, 
+         indiv1.midFace_x, indiv1.midFace_y, 
          indiv1.HandL_x, indiv1.HandL_y, indiv1.HandR_x, indiv1.HandR_y, 
-         indiv2.Face_x, indiv2.Face_y, 
+         indiv2.midFace_x, indiv2.midFace_y, 
          indiv2.HandL_x, indiv2.HandL_y, indiv2.HandR_x, indiv2.HandR_y) %>%
   # calculate pixels with respect to actual presentation on screen
   mutate(
@@ -96,12 +96,12 @@ df.fix = df.fix %>%
   mutate(
     # fixation in radius of head of left individual
     on_headAOI1 = if_else(
-      sqrt((meanX_pix - indiv1.Face_x)**2 + (meanY_pix - indiv1.Face_y)**2) <= r_head, 
+      sqrt((meanX_pix - indiv1.midFace_x)**2 + (meanY_pix - indiv1.midFace_y)**2) <= r_head, 
       TRUE, FALSE
     ),
     # fixation in radius of head of right individual
     on_headAOI2 = if_else(
-      sqrt((meanX_pix - indiv2.Face_x)**2 + (meanY_pix - indiv2.Face_y)**2) <= r_head, 
+      sqrt((meanX_pix - indiv2.midFace_x)**2 + (meanY_pix - indiv2.midFace_y)**2) <= r_head, 
       TRUE, FALSE
     ),
     # fixation in radius of head of any of the two individuals
