@@ -2,6 +2,8 @@
 
 Autistic and non-autistic people differ in their perception and processing of social situations. However, it is still unclear on which differences these mechanisms are based. In this project, we will fill this gap by recording eye movements of autistic and non-autistic participants when observing non-verbal social interactions. Observing social interactions is an important source of information for social learning, and differences in the underlying mechanisms could therefore be an important cause of differences in social learning. This research project aims directly at understanding the mechanisms of one of the core symptoms of autism spectrum disorder (ASD).
 
+Participants also completed tasks for an affiliated project (MAPC project). 
+
 ## Stimulus preparation
 
 Part of the stimuli from Plank et al. (2023), *SciRep*., were used. Interpersonal synchrony based on Motion Energy Analysis was computed, and 10-second segments of the videos were chosen based on the following criteria: 
@@ -93,9 +95,10 @@ as well as `df.exc` (group and number of excluded participants), `df.incET` (gro
 
 ## Project members
 
-* Project lead: Irene Sophia Plank
-* NEVIA lab PI: Christine M. Falter-Wagner
-* Project members (alphabetically): Coenen, Sonja; Foo, Yun Wai
+* Project lead LMU Munich: Irene Sophia Plank
+* NEVIA lab PI LMU Munich: Christine M. Falter-Wagner
+* Project members University of Cologne: Kai Vogeley, Ralf Tepest
+* Afffiliated project members (MAPC project): Sonja Coenen, Yun Wai Foo
 
 ## Licensing
 
