@@ -52,7 +52,7 @@ Data is shared in one RData `PESI_data.RData` file which can be read into R. Thi
 `df`
 
 * subID : anonymised subject ID which is consistent with subID in df.fix
-* diagnosis : diagnostic status, either ASD for autistic adults or COMP for comparison group
+* diagnosis : diagnostic status of the observer, either ASD for autistic adults or COMP for comparison group
 * dyad : which dyad is shown in the video segment
 * video : name of the video
 * run : run number (1 or 2)
@@ -82,7 +82,7 @@ Data is shared in one RData `PESI_data.RData` file which can be read into R. Thi
 * dyad.type : whether two non-autistic or one autistic and one non-autistic interaction partners are shown in the video (non-autistic or mixed)
 * mot : overall motion energy in the video
 * peak : continuous IPS of motion
-* diagnosis : diagnostic status, either ASD for autistic adults or COMP for comparison group
+* diagnosis : diagnostic status of the observer, either ASD for autistic adults or COMP for comparison group
 
 `df.table`
 
@@ -98,7 +98,7 @@ as well as `df.exc` (group and number of excluded participants), `df.incET` (gro
 * Project lead LMU Munich: Irene Sophia Plank
 * NEVIA lab PI LMU Munich: Christine M. Falter-Wagner
 * Project members University of Cologne: Kai Vogeley, Ralf Tepest
-* Afffiliated project members (MAPC project): Sonja Coenen, Yun Wai Foo
+* Afffiliated project members (MAPC project): Sonja Coenen, Yun Wai Foo, Zhuanghua Shi (MSENSE Lab, LMU Munich)
 
 ## Licensing
 
