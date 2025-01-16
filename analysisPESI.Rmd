@@ -20,6 +20,7 @@ ls.packages = c("knitr",            # kable
                 "SBC",              # plots for checking computational faithfulness
                 "rstatix",          # anova
                 "readODS",          # reading in ODS spreadsheets
+                "vtable",           # creating a summary table
                 "BayesFactor"
                 )
 
@@ -793,7 +794,7 @@ Now that we are convinced that we can trust our model, we have a look at the mod
 # print a summary
 summary(m.pesi)
 
-# plot the posterior distributions
+# plot the posterior distributions for the estimated effects
 post.draws %>% 
   select(starts_with("b_")) %>%
   pivot_longer(cols = starts_with("b_"), 
@@ -847,7 +848,7 @@ h1.b
 
 # H1.c Diagnostic status: Ratings of social interactions differ between 
 # autistic and non-autistic participants. 
-h1.c = hypothesis(m.pesi, "diagnosis1 > 0")
+h1.c = hypothesis(m.pesi, "diagnosis1 > 0", alpha = 0.025)
 h1.c
 
 # H1.d Synchrony x dyad type: The effect of interpersonal motion synchrony 
@@ -857,7 +858,7 @@ h1.d
 
 # H1.e Dyad type x diagnostic status: The effect of dyad type on ratings is 
 # decreased in autistic compared to non-autistic participants.
-h1.e = hypothesis(m.pesi, "diagnosis1:dyad.type1 < 0")
+h1.e = hypothesis(m.pesi, "diagnosis1:dyad.type1 > 0")
 h1.e
 
 # Explore interaction between sync and dyad type in the COMP group only
@@ -866,9 +867,25 @@ e1 = hypothesis(m.pesi,
                 alpha = 0.025)
 e1
 
+# extract predicted differences in ms instead of log data
+df.new = df.agg %>% 
+  select(diagnosis, dyad.type, sync) %>% 
+  distinct() %>%
+  mutate(
+    condition = paste(diagnosis, dyad.type, sync, sep = "_")
+  )
+df.ms = as.data.frame(
+  fitted(m.pesi, summary = F, 
+               newdata = df.new %>% select(diagnosis, dyad.type, sync), 
+               re_formula = NA))
+colnames(df.ms) = df.new$condition
+
+# table for the cell values
+st(df.ms, out = "kable")
+
 ```
 
-Our Bayesian linear mixed model evaluating predictors for the ratings reveals support for our hypotheses postulating decreased ratings for mixed dyads (*Estimate* = `r round(h1.a$hypothesis$Estimate,2)` [`r round(h1.a$hypothesis$CI.Lower,2)`, `r round(h1.a$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h1.a$hypothesis$Post.Prob,3)`) and increased ratings for high synchrony videos (*Estimate* = `r round(h1.b$hypothesis$Estimate,2)` [`r round(h1.b$hypothesis$CI.Lower,2)`, `r round(h1.b$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h1.b$hypothesis$Post.Prob,3)`). However, there is no support for our hypotheses regarding differences between the ratings of autistic and non-autistic participants (*Estimate* = `r round(h1.c$hypothesis$Estimate,2)` [`r round(h1.c$hypothesis$CI.Lower,2)`, `r round(h1.c$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h1.c$hypothesis$Post.Prob,3)`) or the interaction of synchrony and dyad type (*Estimate* = `r round(h1.d$hypothesis$Estimate,2)` [`r round(h1.d$hypothesis$CI.Lower,2)`, `r round(h1.d$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h1.d$hypothesis$Post.Prob,3)`) or dyad type and diagnostic status (*Estimate* = `r round(h1.e$hypothesis$Estimate,2)` [`r round(h1.e$hypothesis$CI.Lower,2)`, `r round(h1.e$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h1.e$hypothesis$Post.Prob,3)`). 
+The model revealed support for our hypotheses postulating decreased ratings for mixed dyads (*estimate* = `r round(h1.a$hypothesis$Estimate,2)` [`r round(h1.a$hypothesis$CI.Lower,2)`, `r round(h1.a$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.a$hypothesis$Post.Prob,3)`) and increased ratings for high synchrony videos (*estimate* = `r round(h1.b$hypothesis$Estimate,2)` [`r round(h1.b$hypothesis$CI.Lower,2)`, `r round(h1.b$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.b$hypothesis$Post.Prob,3)`). However, there is no support for our hypotheses regarding differences between the ratings of autistic and non-autistic participants (*estimate* = `r round(h1.c$hypothesis$Estimate,2)` [`r round(h1.c$hypothesis$CI.Lower,2)`, `r round(h1.c$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.c$hypothesis$Post.Prob,3)`) or the interaction of synchrony and dyad composition (*estimate* = `r round(h1.d$hypothesis$Estimate,2)` [`r round(h1.d$hypothesis$CI.Lower,2)`, `r round(h1.d$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.d$hypothesis$Post.Prob,3)`) or dyad composition and diagnostic status (*estimate* = `r round(h1.e$hypothesis$Estimate,2)` [`r round(h1.e$hypothesis$CI.Lower,2)`, `r round(h1.e$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.e$hypothesis$Post.Prob,3)`). 
 
 
 ### Plots
@@ -883,29 +900,38 @@ df.agg %>%
   summarise(
     rating.confirmed = mean(rating.confirmed, na.rm = T)
   ) %>%
-  ggplot(aes(dyad.type, rating.confirmed, fill = sync, colour = sync)) + 
+  rename(`motion IPS` = sync) %>%
+  mutate(
+    observer = recode(diagnosis,
+                       "ASD" = "autistic observer", 
+                       "COMP" = "non-autistic observer"),
+    dyad.type = recode(dyad.type,
+                       "mixed"        = "mixed dyad",
+                       "non-autistic" = "non-autistic dyad")
+  ) %>%
+  ggplot(aes(dyad.type, rating.confirmed, fill = `motion IPS`, colour = `motion IPS`)) + 
   geom_rain(rain.side = 'r', 
             boxplot.args = list(colour = "black", 
                                 outlier.shape = NA, 
                                 show.legend = FALSE,
-                                alpha = 0.5),
+                                alpha = 0.75),
             violin.args  = list(colour = "black",
                                 outlier.shape = NA, 
                                 show.legend = T,
-                                alpha = .5),
+                                alpha = .75),
             point.args   = list(show.legend = FALSE,
                                 size  = .75, 
-                                alpha = .5),
+                                alpha = .75),
             boxplot.args.pos = list(
               position = 
                 ggpp::position_dodgenudge(x = .1, width = 0.1), 
               width = 0.1
             )) +
   ylim(0, 100) +
-  facet_wrap(. ~ diagnosis) +
-  scale_fill_manual(values = custom.col) +
-  scale_color_manual(values = custom.col) +
-  labs(title = "Mean confirmed ratings per subject", 
+  facet_wrap(. ~ observer) +
+  scale_fill_manual(values = c("#1E88E5", "#004D40")) +
+  scale_color_manual(values = c("#1E88E5", "#004D40")) +
+  labs(title = "Mean impression ratings", 
        x = "", 
        y = "rating") +
   theme_bw() + 
@@ -913,6 +939,12 @@ df.agg %>%
         plot.title = element_text(hjust = 0.5), 
         legend.direction = "horizontal", 
         text = element_text(size = 15))
+
+ggsave("Figure3_ratings.pdf", 
+       units = "mm", 
+       width  = 170,
+       height = 100,
+       dpi    = 300)
 
 ```
 
@@ -1197,19 +1229,26 @@ h2.b
 h2.c = hypothesis(m.fix, "(diagnosis1:AOI1 + diagnosis1:AOI2)/2 < 0", alpha = 0.025)
 h2.c
 
-# exploring which AOI is driving this...
-e1 = hypothesis(m.fix, "diagnosis1:AOI1 < 0", alpha = 0.025)
-e1
-e2 = hypothesis(m.fix, "diagnosis1:AOI2 < 0", alpha = 0.025)
-e2
-e3 = hypothesis(m.fix, "-diagnosis1:AOI1 -diagnosis1:AOI2 > 0", alpha = 0.025)
-e3
+## exploring which AOI is driving this
+# first, reminder of the contrast settings
+contrasts(m.fix[["data"]][["AOI"]])
+contrasts(m.fix[["data"]][["diagnosis"]])
+
+# ASD(body) > COMP(body)
+e1.body = hypothesis(m.fix, "diagnosis1 - diagnosis1:AOI1 - diagnosis1:AOI2 > 0", alpha = 0.025)
+e1.body
+# ASD(hand) < COMP(hand)
+e2.hand = hypothesis(m.fix, "-diagnosis1 - diagnosis1:AOI2 > 0", alpha = 0.025)
+e2.hand
+# ASD(head) < COMP(head)
+e3.head = hypothesis(m.fix, "-diagnosis1 -diagnosis1:AOI1 > 0", alpha = 0.025)
+e3.head
 
 ```
 
-Our second Bayesian linear mixed model evaluating predictors for the proportional dwell times reveals support for our expectation of differences between autistic and non-autistic participants dependent on the specific AOI (*Estimate* = `r round(h2.c$hypothesis$Estimate,2)` [`r round(h2.c$hypothesis$CI.Lower,2)`, `r round(h2.c$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h2.c$hypothesis$Post.Prob,3)`). Further exploration shows that this is driven by reduced dwell times on the head region (*Estimate* = `r round(e1$hypothesis$Estimate,2)` [`r round(e1$hypothesis$CI.Lower,2)`, `r round(e1$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(e1$hypothesis$Post.Prob,3)`) and increased dwell times on the body region (*Estimate* = `r round(e3$hypothesis$Estimate,2)` [`r round(e3$hypothesis$CI.Lower,2)`, `r round(e3$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(e3$hypothesis$Post.Prob,3)`) for autistic participants. 
+Our second Bayesian linear mixed model evaluating predictors for the proportional dwell times reveals support for our expectation of differences between autistic and non-autistic participants dependent on the specific AOI (*estimate* = `r round(h2.c$hypothesis$Estimate,2)` [`r round(h2.c$hypothesis$CI.Lower,2)`, `r round(h2.c$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h2.c$hypothesis$Post.Prob,3)`). Further exploration shows that this is driven by decreased dwell times on the head region (*estimate* = `r round(e3.head$hypothesis$Estimate,2)` [`r round(e3.head$hypothesis$CI.Lower,2)`, `r round(e3.head$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(e3.head$hypothesis$Post.Prob,3)`) in autistic participants.
 
-There is no support for our hypotheses regarding interactions between synchrony and AOI (*Estimate* = `r round(h2.b$hypothesis$Estimate,2)` [`r round(h2.b$hypothesis$CI.Lower,2)`, `r round(h2.b$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h2.b$hypothesis$Post.Prob,3)`) or dyad type and AOI (*Estimate* = `r round(h2.a$hypothesis$Estimate,2)` [`r round(h2.a$hypothesis$CI.Lower,2)`, `r round(h2.a$hypothesis$CI.Upper,2)`], *Posterior probability* = `r round(h2.a$hypothesis$Post.Prob,3)`). 
+There is no support for our hypotheses regarding interactions between synchrony and AOI (*estimate* = `r round(h2.b$hypothesis$Estimate,2)` [`r round(h2.b$hypothesis$CI.Lower,2)`, `r round(h2.b$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h2.b$hypothesis$Post.Prob,3)`) or dyad composition and AOI (*estimate* = `r round(h2.a$hypothesis$Estimate,2)` [`r round(h2.a$hypothesis$CI.Lower,2)`, `r round(h2.a$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h2.a$hypothesis$Post.Prob,3)`). 
 
 ### Plots
 
@@ -1223,29 +1262,40 @@ df.fix.agg %>%
   summarise(
     fix.prop = mean(fix.prop, na.rm = T)
   ) %>%
-  ggplot(aes(AOI, fix.prop, fill = sync, colour = sync)) + 
+  mutate(
+    observer = recode(diagnosis,
+                       "ASD" = "autistic", 
+                       "COMP" = "non-autistic"),
+    `motion IPS` = if_else(
+      sync == "high", "high motion IPS","low motion IPS"
+    ),
+    dyad.type = recode(dyad.type,
+                       "mixed"        = "mixed dyad",
+                       "non-autistic" = "non-autistic dyad")
+  ) %>%
+  ggplot(aes(AOI, fix.prop, fill = observer, colour = observer)) + 
   geom_rain(rain.side = 'r', 
             boxplot.args = list(colour = "black", 
                                 outlier.shape = NA, 
                                 show.legend = FALSE,
-                                alpha = 0.5),
+                                alpha = .75),
             violin.args  = list(colour = "black",
                                 outlier.shape = NA, 
                                 show.legend = T,
-                                alpha = .5),
+                                alpha = .75),
             point.args   = list(show.legend = FALSE,
                                 size  = 0.75,
-                                alpha = .5),
+                                alpha = .75),
             boxplot.args.pos = list(
               position = 
                 ggpp::position_dodgenudge(x = .1, width = 0.1), 
               width = 0.1
             )) +
   ylim(0, 100) +
-  facet_wrap(dyad.type ~ diagnosis) +
-  scale_fill_manual(values = custom.col) +
-  scale_color_manual(values = custom.col) +
-  labs(title = "Mean fixation duration proportions per subject", 
+  facet_wrap(dyad.type ~ `motion IPS`) +
+  scale_fill_manual(values = c("#CC79A7", "#D55E00")) +
+  scale_color_manual(values = c("#CC79A7", "#D55E00")) +
+  labs(title = "Mean dwell times", 
        x = "", 
        y = "percent") +
   theme_bw() + 
@@ -1254,116 +1304,12 @@ df.fix.agg %>%
         legend.direction = "horizontal", 
         text = element_text(size = 15))
 
-```
 
-Additionally, we focus on specific interactions. 
-
-```{r plot_fix2, fig.height=4}
-
-# rain cloud plot for fixation durations, focusing on synchrony x AOI
-df.fix.agg %>%
-  group_by(subID, diagnosis, sync, AOI) %>%
-  summarise(
-    fix.prop = mean(fix.prop, na.rm = T)
-  ) %>%
-  ggplot(aes(AOI, fix.prop, fill = sync, colour = sync)) + 
-  geom_rain(rain.side = 'r', 
-            boxplot.args = list(colour = "black", 
-                                outlier.shape = NA, 
-                                show.legend = FALSE,
-                                alpha = 0.5),
-            violin.args  = list(colour = "black",
-                                outlier.shape = NA, 
-                                show.legend = T,
-                                alpha = .5),
-            point.args   = list(show.legend = FALSE,
-                                alpha = .5),
-            boxplot.args.pos = list(
-              position = 
-                ggpp::position_dodgenudge(x = .1, width = 0.1), 
-              width = 0.1
-            )) +
-  ylim(0, 100) +
-  scale_fill_manual(values = custom.col) +
-  scale_color_manual(values = custom.col) +
-  labs(title = "Mean fixation duration proportions per subject", 
-       x = "", 
-       y = "percent") +
-  theme_bw() + 
-  theme(legend.position = "bottom", 
-        plot.title = element_text(hjust = 0.5), 
-        legend.direction = "horizontal", 
-        text = element_text(size = 15))
-
-# rain cloud plot for fixation durations, focusing on dyad type x AOI
-df.fix.agg %>%
-  group_by(subID, diagnosis, dyad.type, AOI) %>%
-  summarise(
-    fix.prop = mean(fix.prop, na.rm = T)
-  ) %>%
-  ggplot(aes(AOI, fix.prop, fill = dyad.type, colour = dyad.type)) + 
-  geom_rain(rain.side = 'r', 
-            boxplot.args = list(colour = "black", 
-                                outlier.shape = NA, 
-                                show.legend = FALSE,
-                                alpha = 0.5),
-            violin.args  = list(colour = "black",
-                                outlier.shape = NA, 
-                                show.legend = T,
-                                alpha = .5),
-            point.args   = list(show.legend = FALSE,
-                                alpha = .5),
-            boxplot.args.pos = list(
-              position = 
-                ggpp::position_dodgenudge(x = .1, width = 0.1), 
-              width = 0.1
-            )) +
-  ylim(0, 100) +
-  scale_fill_manual(values = custom.col) +
-  scale_color_manual(values = custom.col) +
-  labs(title = "Mean fixation duration proportions per subject", 
-       x = "", 
-       y = "percent") +
-  theme_bw() + 
-  theme(legend.position = "bottom", 
-        plot.title = element_text(hjust = 0.5), 
-        legend.direction = "horizontal", 
-        text = element_text(size = 15))
-
-# rain cloud plot for fixation durations, focusing on diagnostic status x AOI
-df.fix.agg %>%
-  group_by(subID, diagnosis, AOI) %>%
-  summarise(
-    fix.prop = mean(fix.prop, na.rm = T)
-  ) %>%
-  ggplot(aes(AOI, fix.prop, fill = diagnosis, colour = diagnosis)) + 
-  geom_rain(rain.side = 'r', 
-            boxplot.args = list(colour = "black", 
-                                outlier.shape = NA, 
-                                show.legend = FALSE,
-                                alpha = 0.5),
-            violin.args  = list(colour = "black",
-                                outlier.shape = NA, 
-                                show.legend = T,
-                                alpha = .5),
-            point.args   = list(show.legend = FALSE,
-                                alpha = .5),
-            boxplot.args.pos = list(
-              position = 
-                ggpp::position_dodgenudge(x = .1, width = 0.1), 
-              width = 0.1
-            )) +
-  ylim(0, 100) +
-  scale_fill_manual(values = custom.col) +
-  scale_color_manual(values = custom.col) +
-  labs(title = "Mean fixation duration proportions per subject", 
-       x = "", 
-       y = "percent") +
-  theme_bw() + 
-  theme(legend.position = "bottom", 
-        plot.title = element_text(hjust = 0.5), 
-        legend.direction = "horizontal", 
-        text = element_text(size = 15))
+ggsave("Figure4_dwelltimes.pdf", 
+       units = "mm", 
+       width  = 170,
+       height = 170,
+       dpi    = 300)
 
 ```
 
@@ -1626,9 +1572,35 @@ post.draws %>%
   scale_fill_manual(values = c(credible = c_dark, c_light)) + 
   theme(legend.position = "none")
 
+df.sac.overall = df.sac.agg %>% group_by(subID) %>% 
+  summarise(n.sac = mean(n.sac, na.rm = T)) %>% 
+  ungroup()
+
+# extract predicted differences in ms instead of log data
+df.new = df.sac.agg %>% 
+  select(diagnosis, sync, dyad.type) %>% 
+  distinct() %>%
+  mutate(
+    condition = paste(diagnosis, sync, dyad.type, sep = "_")
+  )
+
+df.ms = as.data.frame(
+  fitted(m.sac, summary = F, 
+               newdata = df.new %>% select(diagnosis, sync, dyad.type), 
+               re_formula = NA))
+colnames(df.ms) = df.new$condition
+
+# calculate our difference columns
+df.ms = df.ms %>%
+     mutate(
+       ASD  = rowMeans(select(., starts_with("ASD")), na.rm = T),
+       COMP = rowMeans(select(., starts_with("COM")), na.rm = T),
+       COMP_ASD = COMP - ASD
+       )
+
 ```
 
-While autistic participants seem to have produced fewer saccades on average, this was independent of the conditions. Additionally, there seem to be no differences associated with the task conditions itself. 
+In general, participants produced on average `r round(mean(df.sac.overall$n.sac),2)` +- `r round(sd(df.sac.overall$n.sac)/sqrt(nrow(df.sac.overall)),2)` saccades per 10-second segment. There were no credible differences between any of the task conditions or interactions. However, autistic observers produced fewer saccades than non-autistic observers (*Predicted Estimate* COMP - ASD: `r round(mean(df.ms$COMP_ASD),2)` [`r round(quantile(df.ms$COMP_ASD, 0.025)[[1]], 2)`, `r round(quantile(df.ms$COMP_ASD, 0.975)[[1]], 2)`]). 
 
 ## Predicting ratings by gaze behaviour
 
@@ -1882,4 +1854,4 @@ post.draws %>%
 
 ```
 
-It seems as if decreased dwell times on the hands was associated with increased ratings. 
+Predicting comfortability ratings with gaze behaviour revealed that higher comfortability impressions were associated with reduced dwell times on the hands (Scaled dwell times on hands: *estimate* = `r round(fixef(m.com)[4,1],2)` [`r round(fixef(m.com)[4,3],2)`, `r round(fixef(m.com)[4,4],2)`]) but no other gaze behaviour.
