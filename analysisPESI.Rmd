@@ -21,7 +21,8 @@ ls.packages = c("knitr",            # kable
                 "rstatix",          # anova
                 "readODS",          # reading in ODS spreadsheets
                 "vtable",           # creating a summary table
-                "BayesFactor"
+                "BayesFactor", 
+                "bayestestR"
                 )
 
 lapply(ls.packages, library, character.only=TRUE)
@@ -867,7 +868,7 @@ e1 = hypothesis(m.pesi,
                 alpha = 0.025)
 e1
 
-# extract predicted differences in ms instead of log data
+# extract predicted differences based on the model
 df.new = df.agg %>% 
   select(diagnosis, dyad.type, sync) %>% 
   distinct() %>%
@@ -880,12 +881,23 @@ df.ms = as.data.frame(
                re_formula = NA))
 colnames(df.ms) = df.new$condition
 
+# compute specific differences
+df.ms = df.ms %>%
+  mutate(
+    dyad.diff = 
+      rowMeans(select(., matches(".*_non-autistic_.*")), na.rm = T) -
+      rowMeans(select(., matches(".*_mixed_.*")), na.rm = T),
+    sync.diff = 
+      rowMeans(select(., ends_with("_high")), na.rm = T) -
+      rowMeans(select(., ends_with("_low")), na.rm = T)
+  )
+
 # table for the cell values
 st(df.ms, out = "kable")
 
 ```
 
-The model revealed support for our hypotheses postulating decreased ratings for mixed dyads (*estimate* = `r round(h1.a$hypothesis$Estimate,2)` [`r round(h1.a$hypothesis$CI.Lower,2)`, `r round(h1.a$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.a$hypothesis$Post.Prob,3)`) and increased ratings for high synchrony videos (*estimate* = `r round(h1.b$hypothesis$Estimate,2)` [`r round(h1.b$hypothesis$CI.Lower,2)`, `r round(h1.b$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.b$hypothesis$Post.Prob,3)`). However, there is no support for our hypotheses regarding differences between the ratings of autistic and non-autistic participants (*estimate* = `r round(h1.c$hypothesis$Estimate,2)` [`r round(h1.c$hypothesis$CI.Lower,2)`, `r round(h1.c$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.c$hypothesis$Post.Prob,3)`) or the interaction of synchrony and dyad composition (*estimate* = `r round(h1.d$hypothesis$Estimate,2)` [`r round(h1.d$hypothesis$CI.Lower,2)`, `r round(h1.d$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.d$hypothesis$Post.Prob,3)`) or dyad composition and diagnostic status (*estimate* = `r round(h1.e$hypothesis$Estimate,2)` [`r round(h1.e$hypothesis$CI.Lower,2)`, `r round(h1.e$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.e$hypothesis$Post.Prob,3)`). 
+The model revealed support for our hypotheses postulating decreased ratings for mixed dyads (*estimate* = `r round(h1.a$hypothesis$Estimate,2)` [`r round(h1.a$hypothesis$CI.Lower,2)`, `r round(h1.a$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.a$hypothesis$Post.Prob,3)`) and increased ratings for high synchrony videos (*estimate* = `r round(h1.b$hypothesis$Estimate,2)` [`r round(h1.b$hypothesis$CI.Lower,2)`, `r round(h1.b$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.b$hypothesis$Post.Prob,3)`). Specifically, the model predicts a mean difference of `r round(mean(df.ms$dyad.diff),3)` [`r round(ci(df.ms$dyad.diff)$CI_low, 3)`, `r round(ci(df.ms$dyad.diff)$CI_high, 3)`] between non-autistic and mixed dyads as well as a mean differences of `r round(mean(df.ms$sync.diff),3)` [`r round(ci(df.ms$sync.diff)$CI_low, 3)`, `r round(ci(df.ms$sync.diff)$CI_high, 3)`] between high and low motion IPS. However, there is no support for our hypotheses regarding differences between the ratings of autistic and non-autistic participants (*estimate* = `r round(h1.c$hypothesis$Estimate,2)` [`r round(h1.c$hypothesis$CI.Lower,2)`, `r round(h1.c$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.c$hypothesis$Post.Prob,3)`) or the interaction of synchrony and dyad composition (*estimate* = `r round(h1.d$hypothesis$Estimate,2)` [`r round(h1.d$hypothesis$CI.Lower,2)`, `r round(h1.d$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.d$hypothesis$Post.Prob,3)`) or dyad composition and diagnostic status (*estimate* = `r round(h1.e$hypothesis$Estimate,2)` [`r round(h1.e$hypothesis$CI.Lower,2)`, `r round(h1.e$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h1.e$hypothesis$Post.Prob,3)`). 
 
 
 ### Plots
@@ -1244,11 +1256,40 @@ e2.hand
 e3.head = hypothesis(m.fix, "-diagnosis1 -diagnosis1:AOI1 > 0", alpha = 0.025)
 e3.head
 
+# extract predicted differences based on the model
+df.new = df.fix %>% 
+  select(diagnosis, dyad.type, sync, AOI) %>% 
+  distinct() %>%
+  mutate(
+    condition = paste(diagnosis, dyad.type, sync, AOI, sep = "_")
+  )
+df.ms = as.data.frame(
+  fitted(m.fix, summary = F, 
+               newdata = df.new %>% select(diagnosis, dyad.type, sync, AOI), 
+               re_formula = NA))
+colnames(df.ms) = df.new$condition
+
+# compute specific differences
+df.ms = df.ms %>%
+  mutate(
+    ASD.body  = rowMeans(select(., matches("ASD.*_body")), na.rm = T),
+    ASD.hand  = rowMeans(select(., matches("ASD.*_hand")), na.rm = T),
+    ASD.head  = rowMeans(select(., matches("ASD.*_head")), na.rm = T),
+    COMP.body = rowMeans(select(., matches("COMP.*_body")), na.rm = T),
+    COMP.hand = rowMeans(select(., matches("COMP.*_hand")), na.rm = T),
+    COMP.head = rowMeans(select(., matches("COMP.*_head")), na.rm = T),
+    body.diff = COMP.body - ASD.body,
+    hand.diff = COMP.hand - ASD.hand,
+    head.diff = COMP.head - ASD.head,
+    .keep = "none"
+  )
+
+# table for the cell values
+st(df.ms, out = "kable")
+
 ```
 
-Our second Bayesian linear mixed model evaluating predictors for the proportional dwell times reveals support for our expectation of differences between autistic and non-autistic participants dependent on the specific AOI (*estimate* = `r round(h2.c$hypothesis$Estimate,2)` [`r round(h2.c$hypothesis$CI.Lower,2)`, `r round(h2.c$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h2.c$hypothesis$Post.Prob,3)`). Further exploration shows that this is driven by decreased dwell times on the head region (*estimate* = `r round(e3.head$hypothesis$Estimate,2)` [`r round(e3.head$hypothesis$CI.Lower,2)`, `r round(e3.head$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(e3.head$hypothesis$Post.Prob,3)`) in autistic participants.
-
-There is no support for our hypotheses regarding interactions between synchrony and AOI (*estimate* = `r round(h2.b$hypothesis$Estimate,2)` [`r round(h2.b$hypothesis$CI.Lower,2)`, `r round(h2.b$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h2.b$hypothesis$Post.Prob,3)`) or dyad composition and AOI (*estimate* = `r round(h2.a$hypothesis$Estimate,2)` [`r round(h2.a$hypothesis$CI.Lower,2)`, `r round(h2.a$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h2.a$hypothesis$Post.Prob,3)`). 
+Our second Bayesian linear mixed model evaluating predictors for the proportional dwell times reveals support for our expectation of differences between autistic and non-autistic participants dependent on the specific AOI (*estimate* = `r round(h2.c$hypothesis$Estimate,2)` [`r round(h2.c$hypothesis$CI.Lower,2)`, `r round(h2.c$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h2.c$hypothesis$Post.Prob,3)`). Further exploration shows that this is driven by decreased dwell times on the head region (*estimate* = `r round(e3.head$hypothesis$Estimate,2)` [`r round(e3.head$hypothesis$CI.Lower,2)`, `r round(e3.head$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(e3.head$hypothesis$Post.Prob,3)`) in autistic participants. Specifically, this model predicts a difference of dwell times on the heads of the interaction partners of `r round(mean(df.ms$head.diff), 3)`% [`r round(ci(df.ms$head.diff)$CI_low, 3)`, `r round(ci(df.ms$head.diff)$CI_high, 3)`] between autistic and non-autistic observers. There is no support for our hypotheses regarding interactions between synchrony and AOI (*estimate* = `r round(h2.b$hypothesis$Estimate,2)` [`r round(h2.b$hypothesis$CI.Lower,2)`, `r round(h2.b$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h2.b$hypothesis$Post.Prob,3)`) or dyad composition and AOI (*estimate* = `r round(h2.a$hypothesis$Estimate,2)` [`r round(h2.a$hypothesis$CI.Lower,2)`, `r round(h2.a$hypothesis$CI.Upper,2)`], *posterior probability* = `r round(h2.a$hypothesis$Post.Prob,3)`). 
 
 ### Plots
 
