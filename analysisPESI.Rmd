@@ -276,6 +276,12 @@ if (!file.exists("PESI_data.RData")) {
     filter(subID %in% subIDs) %>%
     merge(., df.pst, all.x = T)
   
+  # get an overview over the diagnosis of the autistic group
+  df.asd = df.sub %>% 
+    filter(diagnosis == "ASD") %>%
+    group_by(ASD.icd10) %>%
+    count()
+  
   # print gender frequencies and compare them across groups
   tb.gen = xtabs(~ gender + diagnosis, data = df.sub)
   ct.full = contingencyTableBF(tb.gen, sampleType = "indepMulti", fixedMargin = "cols")
@@ -486,7 +492,7 @@ if (!file.exists("PESI_data.RData")) {
   # save it all
   df = df %>% select(subID, diagnosis, dyad, video, run, trl, sync, rating, 
                      dyad.type, mot, peak, rating.confirmed, thre, steep, s1peak, s2peak)
-  save(df, df.table, df.sht, ct.full, df.exc, df.incET, df.fix, df.sac.agg, 
+  save(df, df.table, df.sht, ct.full, df.exc, df.incET, df.fix, df.sac.agg, df.asd, 
        file = "PESI_data.RData")
   
 } else {
@@ -505,6 +511,10 @@ rm(df.exc)
 # print number of included participants in eye tracking
 kable(df.incET)
 rm(df.incET)
+
+# print the icd 10 code counts
+kable(df.asd)
+rm(df.asd)
 
 # print the outcome of the shapiro tests
 kable(df.sht)
