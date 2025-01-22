@@ -305,5 +305,29 @@ df.sub = df.sub %>%
 # check if someone has to be excluded
 nrow(df.sub %>% filter(CFT_iq <= 70))
 
+# add the ICD codes
+df.sub = df.sub %>%
+  mutate(
+    ASD.icd10 = case_when(
+      diagnosis == "COMP" | diagnosis == "ADHD" ~ '',
+      grepl(".0", ASDcode) ~ 'F84.0', # childhood
+      grepl(".1", ASDcode) ~ 'F84.1', # atypical
+      grepl(".5", ASDcode) ~ 'F84.5'  # asperger
+    )
+  ) %>% 
+  merge(.,
+        read_csv(list.files(pattern = ".*_code.csv")) %>%
+          select(subID, Code, Group),
+        all = T
+  ) %>%
+  filter(Group != "NOT") %>%
+  mutate(
+    ASD.icd10 = case_when(
+      diagnosis == "COMP" | !is.na(ASD.icd10) ~ ASD.icd10,
+      is.na(ASD.icd10) ~ Code
+    )
+  ) %>%
+  select(-Code, -Group)
+
 # save everything
 write_csv(df.sub, file = "PESI_centraXX.csv")
