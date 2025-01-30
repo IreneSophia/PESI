@@ -2,7 +2,7 @@
 title: "PESI analysis with brms"
 author: "I. S. Plank"
 date: "`r Sys.Date()`"
-output: word_document
+output: pdf_document
 ---
 
 ```{r settings, include=FALSE}
@@ -43,7 +43,6 @@ custom.col = c(c_dark_highlight, c_green, "#CC79A7", "#D55E00")
 use_cmdstanr = getOption("SBC.vignettes_cmdstanr", TRUE) # Set to false to use rst
 options(brms.backend = "cmdstanr")
 cache_dir = "./_brms_SBC_cache"
-loo_dir = "./_brms_LOO_cache"
 if(!dir.exists(cache_dir)) {
   dir.create(cache_dir)
 }
@@ -51,9 +50,6 @@ if(!dir.exists(cache_dir)) {
 # use parallel processing
 library(future)
 plan(multisession)
-
-# get the functions to perform loo (leave-one-out cross-validation)
-source("./helpers/fun_loo.R")
 
 ```
 
