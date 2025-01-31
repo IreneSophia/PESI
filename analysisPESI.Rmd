@@ -51,6 +51,34 @@ if(!dir.exists(cache_dir)) {
 library(future)
 plan(multisession)
 
+# calculate visual angle: px.x should be a vector of c(width, height) in pixel
+vis_ang = function(px.x) {
+  
+  # infos on the setup
+  mm.w = 533    # monitor width in mm
+  mm.h = 300    # monitor height in mm
+  px.w = 1920   # monitor resolution: width
+  px.h = 1080   # monitor resolution: height
+  dist = 570    # viewing distance
+  
+  # convert width from screen pixel size to mm and take half
+  mm.x    = (px.x[1] / (px.w/mm.w))/2
+  
+  # convert height from screen pixel size to mm and take half
+  mm.x[2] = (px.x[2] / (px.h/mm.h))/2
+  
+  # calculate angles
+  rad.alpha    = atan(mm.x[1]/dist)
+  rad.alpha[2] = atan(mm.x[2]/dist)
+  
+  # convert to degrees and double again
+  deg.alpha    = (rad.alpha[1] / (pi/180)) * 2
+  deg.alpha[2] = (rad.alpha[2] / (pi/180)) * 2
+  
+  return(deg.alpha)
+  
+}
+
 ```
 
 <style type="text/css">
@@ -63,7 +91,9 @@ plan(multisession)
 
 # Introduction
 
-The PESI project focuses on "Perception of nonverbal social interaction in people with and without autism". Specifically, autistic and non-autistic comparison observers watched 64 silent videos of dyadic conversations between two non-autistic or one autistic and one non-autistic adult. All observers were adults. These videos were 10 seconds of longer conversations and either portrayed moments of high or low interpersonal synchrony (IPS) of movement. The videos only showed outlines of the dyad to direct the focus on the movement. During the video presentation, observers' gaze is tracked and after each video they are asked to rate how comfortable they imagine this interaction to be. 
+The PESI project focuses on "Perception of nonverbal social interaction in people with and without autism". Specifically, autistic and non-autistic comparison observers watched 64 silent videos of dyadic interactions between two non-autistic or one autistic and one non-autistic adult. The visual angle of the interaction was approximately `r round(vis_ang(c(950, 650))[1],2)` degrees wide and `r round(vis_ang(c(950, 650))[2],2)` degrees high, depending on the exact frame. We created circular areas of interest (AOIs) for dwell times on the heads and the hands. Their visual angle were `r round(vis_ang(c(210, 210))[1],2)` and `r round(vis_ang(c(140, 140))[1],2)` degrees, respectively. 
+
+All observers were adults. These videos were 10 seconds of longer interactions and either portrayed moments of high or low interpersonal synchrony (IPS) of movement. The videos only showed outlines of the dyad to direct the focus on the movement. During the video presentation, observers' gaze is tracked and after each video they are asked to rate how comfortable they imagine this interaction to be. 
 
 We preregistered the following hypotheses:
 
