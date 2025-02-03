@@ -202,10 +202,6 @@ if (!file.exists("PESI_data.RData")) {
       diagnosis = recode(diagnosis, "CTR" = "COMP")
     ) 
   
-  # load PST values
-  df.pst = read_csv(file.path(dt.path, "PST_simult-params.csv"), show_col_types = F) %>%
-    rename("subID" = "ID") %>% select(-group)
-  
   # load the stimulus description file
   df.stm = read_csv(paste(fl.path, "PESI_videosel-full_230404.csv", 
                           sep = "/"), show_col_types = F) %>%
@@ -226,9 +222,8 @@ if (!file.exists("PESI_data.RData")) {
            ) %>%
     arrange(subID, trl)
 
-  # merge with group information and PST values
+  # merge with group information 
   df = merge(df.sub %>% select(subID, diagnosis), df, all.y = T) %>%
-    merge(., df.pst, all.x = T) %>%
     mutate_if(is.character, as.factor)
   
   # check how many participants per group need to be excluded
@@ -299,8 +294,7 @@ if (!file.exists("PESI_data.RData")) {
   # remove participants not included in the behavioural or the eye tracking
   # analysis from the subjects data frame
   df.sub = df.sub %>% 
-    filter(subID %in% subIDs) %>%
-    merge(., df.pst, all.x = T)
+    filter(subID %in% subIDs)
   
   # get an overview over the diagnosis of the autistic group
   df.asd = df.sub %>% 
@@ -332,8 +326,6 @@ if (!file.exists("PESI_data.RData")) {
       rUI    = rank(UI_total),
       rage   = rank(age),
       rsw_kl = rank(sw_kl),
-      rsteep = rank(steep),
-      rthre  = rank(thre),
       diagnosis = as.factor(diagnosis)
     )
   
@@ -347,8 +339,6 @@ if (!file.exists("PESI_data.RData")) {
   ostt.ISH    = ttestBF(formula = rISH         ~ diagnosis, data = df.sub)
   ostt.RAADS  = ttestBF(formula = rRAADS       ~ diagnosis, data = df.sub)
   ostt.UI     = ttestBF(formula = rUI          ~ diagnosis, data = df.sub)
-  ostt.thre   = ttestBF(formula = rthre        ~ diagnosis, data = df.sub)
-  ostt.steep  = ttestBF(formula = rsteep       ~ diagnosis, data = df.sub)
   
   # ...and put everything in a new dataframe for printing
   measurement  = "Age"
@@ -476,48 +466,12 @@ if (!file.exists("PESI_data.RData")) {
                              sd(df.sub[df.sub$diagnosis == "COMP",]$UI_total)/
                                sqrt(nrow(df.sub[df.sub$diagnosis == "COMP",]))),
                      sprintf("%.3f", ostt.UI@bayesFactor[["bf"]])
-                   ),
-                   c(
-                     "PST - threshold",
-                     sprintf("%.2f (±%.2f)", 
-                             mean(df.sub[df.sub$diagnosis == "ASD",]$thre, 
-                                  na.rm = T), 
-                             sd(df.sub[df.sub$diagnosis == "ASD",]$thre, 
-                                  na.rm = T)/
-                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD" &
-                                                  !is.na(df.sub$thre),]))),
-                     sprintf("%.2f (±%.2f)", 
-                             mean(df.sub[df.sub$diagnosis == "COMP",]$thre, 
-                                  na.rm = T), 
-                             sd(df.sub[df.sub$diagnosis == "COMP",]$thre, 
-                                  na.rm = T)/
-                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP" &
-                                                  !is.na(df.sub$thre),]))),
-                     sprintf("%.3f", ostt.thre@bayesFactor[["bf"]])
-                   ),
-                   c(
-                     "PST - steepness",
-                     sprintf("%.2f (±%.2f)", 
-                             mean(df.sub[df.sub$diagnosis == "ASD",]$steep, 
-                                  na.rm = T), 
-                             sd(df.sub[df.sub$diagnosis == "ASD",]$steep, 
-                                  na.rm = T)/
-                               sqrt(nrow(df.sub[df.sub$diagnosis == "ASD" &
-                                                  !is.na(df.sub$steep),]))),
-                     sprintf("%.2f (±%.2f)", 
-                             mean(df.sub[df.sub$diagnosis == "COMP",]$steep, 
-                                  na.rm = T), 
-                             sd(df.sub[df.sub$diagnosis == "COMP",]$steep, 
-                                  na.rm = T)/
-                               sqrt(nrow(df.sub[df.sub$diagnosis == "COMP" &
-                                                  !is.na(df.sub$steep),]))),
-                     sprintf("%.3f", ostt.steep@bayesFactor[["bf"]])
                    )
                 ) %>% arrange(measurement)
   
   # save it all
   df = df %>% select(subID, diagnosis, dyad, video, run, trl, sync, rating, 
-                     dyad.type, mot, peak, rating.confirmed, thre, steep, s1peak, s2peak)
+                     dyad.type, mot, peak, rating.confirmed, s1peak, s2peak)
   save(df, df.table, df.sht, ct.full, df.exc, df.incET, df.fix, df.sac.agg, df.asd, 
        file = "PESI_data.RData")
   
@@ -1099,7 +1053,7 @@ ggplot(data = quantmat, aes(x = x)) +
 
 Again, most of our data fits our expectations, however, we chose wider priors, therefore, there are also simulated values outside of the possible values (0 to 100). 
 
-```{r sbc_checks2_fix, fig.height=24}
+```{r sbc_checks2_fix, fig.height=6}
 
 # get simulation numbers with issues
 rank = max(df.results$max_rank)
@@ -1116,28 +1070,27 @@ check = merge(df.results %>%
 df.results.b = df.results %>% 
   filter(substr(variable, 1, 2) == "b_") %>% 
   filter(!(sim_id %in% check$sim_id))
-p1 = plot_ecdf_diff(df.results.b) + theme_bw() + theme(legend.position = "none") +
+plot_ecdf_diff(df.results.b) + theme_bw() + theme(legend.position = "none") +
   scale_x_continuous(breaks=scales::pretty_breaks(n = 3)) +
-  scale_y_continuous(breaks=scales::pretty_breaks(n = 3))
-p2 = plot_rank_hist(df.results.b, bins = 20) + theme_bw() +
+  scale_y_continuous(breaks=scales::pretty_breaks(n = 3)) +
+  ggtitle("Empirical cumulative distribution function")
+plot_rank_hist(df.results.b, bins = 20) + theme_bw() +
   scale_x_continuous(breaks=scales::pretty_breaks(n = 3)) +
-  scale_y_continuous(breaks=scales::pretty_breaks(n = 3))
-p3 = plot_sim_estimated(df.results.b, alpha = 0.5) + theme_bw() +
+  scale_y_continuous(breaks=scales::pretty_breaks(n = 3)) +
+  ggtitle("Rank histograms")
+plot_sim_estimated(df.results.b, alpha = 0.5) + theme_bw() +
   scale_x_continuous(breaks=scales::pretty_breaks(n = 3)) +
-  scale_y_continuous(breaks=scales::pretty_breaks(n = 3))
-p4 = plot_contraction(
+  scale_y_continuous(breaks=scales::pretty_breaks(n = 3)) +
+  ggtitle("Simulated values")
+plot_contraction(
   df.results.b, 
   prior_sd = setNames(c(11, 
-                        rep(11, length(unique(df.results.b$variable))-1)), 
+                        rep(10, length(unique(df.results.b$variable))-1)), 
                       unique(df.results.b$variable))) +
   theme_bw() +
   scale_x_continuous(breaks=scales::pretty_breaks(n = 3)) +
-  scale_y_continuous(breaks=scales::pretty_breaks(n = 3))
-
-p = ggarrange(p1, p2, p3, p4, labels = "AUTO", ncol = 1, nrow = 4)
-annotate_figure(p, 
-                top = text_grob("Computational faithfulness and model sensitivity", 
-                face = "bold", size = 14))
+  scale_y_continuous(breaks=scales::pretty_breaks(n = 3)) +
+  ggtitle("Posterior contraction and z-scores")
 
 ```
 
@@ -1499,7 +1452,7 @@ p1
 
 Our simulated data centres around observers only producing a couple of saccades per video, which is reasonable since the videos are only 10 seconds long. However, there is some data simulated that shows up to 50 saccades, so it is reasonably wide and we are happy with the prior predictive distribution. 
 
-```{r sbc_checks2_sac, fig.height=9}
+```{r sbc_checks2_sac, fig.height=15}
 
 # get simulation numbers with issues
 rank = max(df.results$max_rank)
@@ -1804,7 +1757,7 @@ p1
 
 The overall shape again looks acceptable, even though there are some impossible simulated values. 
 
-```{r sbc_checks2_com, fig.height=9}
+```{r sbc_checks2_com, fig.height=15}
 
 # get simulation numbers with issues
 rank = max(df.results$max_rank)
