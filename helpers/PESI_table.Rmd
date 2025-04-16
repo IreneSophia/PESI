@@ -1,0 +1,17 @@
+---
+title: "Demographics table"
+author: "I. S. Plank"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '..')
+library("knitr")
+```
+
+```{r table}
+load("PESI_data.RData")
+kable(df.table)
+```

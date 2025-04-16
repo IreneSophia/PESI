@@ -4,7 +4,7 @@ library(readODS)
 
 # Clear global environment
 rm(list=ls())
-setwd("/media/emba/emba-2/PESI/BVET")
+setwd("/media/emba/backup/PESI/BVET")
 
 # load raw data
 # columns of Interest: internalStudyMemberID, name2, code, value, section, (valueIndex), numericValue
